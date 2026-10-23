@@ -1,0 +1,15 @@
+- insert:
+    - id: conversation-overview
+      name: 'dsh-conversation-overview'
+      inject:
+        - connection
+      config:
+        showProgress: true
+        showArtifacts: true
+        showReferences: true
+        placement: both
+        sectionFullHeight: false
+        quickNav: true
+        quickNavLink: true
+        vikingPreview: true
+        vikingUrl: 'http://127.0.0.1:1933'
