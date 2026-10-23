@@ -4,7 +4,7 @@ DeepSeek Harness（DSH）插件：在对话/轨迹旁增加「概览」标签页
 
 > An Overview tab beside Chat/Trajectory plus a matching right-sidebar page for DeepSeek Harness: session progress (goal, todos, key steps), artifacts, and references (context injections, memories, skills, files), with per-turn scoping and OpenViking memory preview.
 
-![会话概览截图](./assets/overview.png)
+![会话概览截图](https://cdn.jsdelivr.net/npm/dsh-conversation-overview@1/assets/overview.png)
 
 ## 功能特性
 
