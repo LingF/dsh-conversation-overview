@@ -7,8 +7,12 @@
         showProgress: true
         showArtifacts: true
         showReferences: true
+        showStats: true
+        timeMode: clock
         placement: both
         sectionFullHeight: false
+        todoPrompt: true
+        todoPromptTemplate: ''
         quickNav: true
         quickNavLink: true
         vikingPreview: true

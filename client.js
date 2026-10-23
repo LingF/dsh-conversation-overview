@@ -18,8 +18,10 @@ window.__ModuleLoader__.load({
     const OVERLAY_KEY = "dsh.conversationOverview.config";
     const ROW_ID = "conversation-overview";
     const ROW_KEY = "dsh-conversation-overview#conversation-overview";
+    const FEEDBACK_URL = "https://github.com/LingF/dsh-conversation-overview/issues";
     const PLACEMENTS = ["conversation", "sidebar", "both"];
-    const CONFIG_FIELDS = ["showProgress", "showArtifacts", "showReferences", "placement", "sectionFullHeight", "quickNav", "quickNavLink", "vikingPreview", "vikingUrl", "vikingAccount", "vikingUser"];
+    const TIME_MODES = ["clock", "elapsed"];
+    const CONFIG_FIELDS = ["showProgress", "showArtifacts", "showReferences", "showStats", "timeMode", "placement", "sectionFullHeight", "todoPrompt", "todoPromptTemplate", "quickNav", "quickNavLink", "vikingPreview", "vikingUrl", "vikingAccount", "vikingUser"];
     const VIKING_TAB_ID = "dsh-conversation-overview/viking";
     const VIKING_TAB_KIND = "viking-memory";
     const VIKING_ADDRESS_PREFIX = "dsh-resource://viking-memory/";
@@ -46,7 +48,18 @@ window.__ModuleLoader__.load({
       "progress.empty": "生成任务/待办后将在此展示进展",
       "progress.emptyTurn": "本轮未创建任务计划",
       "progress.recentSteps": "本轮关键步骤（最近 6 条）",
-      "progress.todoHint": "点击将该步骤的重执行提示词填入对话框",
+      "progress.allSteps": "本轮关键步骤（全部）",
+      "progress.showEarlierSteps": "显示更早的步骤",
+      "progress.moreStepsCount": "还有 {n} 条",
+      "progress.hideEarlierSteps": "收起早期步骤",
+      "team.phase.provisioning": "创建中",
+      "team.phase.active": "运行中",
+      "team.phase.inactive": "空闲",
+      "team.phase.failed": "失败",
+      "team.blocked": "阻塞 {n}",
+      "progress.expandTeam": "展开团队详情",
+      "progress.collapseTeam": "收起团队详情",
+      "progress.todoHint": "双击将该步骤的重执行提示词填入对话框",
       "progress.todoInserted": "已填入对话框",
       "progress.todoCopied": "未找到对话框，提示词已复制到剪贴板",
       "progress.todoFailed": "填入失败，请重试",
@@ -61,6 +74,12 @@ window.__ModuleLoader__.load({
       "settings.showProgress": "进展（任务与待办）",
       "settings.showArtifacts": "产物（本次对话产出）",
       "settings.showReferences": "引用（上下文、记忆等）",
+      "settings.showStats": "统计（用时、执行次数等）",
+      "settings.timeMode": "时间显示",
+      "settings.timeMode.clock": "时间点",
+      "settings.timeMode.elapsed": "本轮计时（从 0s 起）",
+      "settings.feedbackGroup": "反馈",
+      "settings.feedback": "问题反馈（GitHub Issues）",
       "settings.fullHeightRow": "分区完整展示（不限高）",
       "settings.fullHeightNote": "关闭时进展/产物/引用各自限制最大高度，超出部分在分区内滚动。",
       "settings.layout": "布局",
@@ -78,6 +97,11 @@ window.__ModuleLoader__.load({
       "settings.quickNavLinkRow": "导航联动概览",
       "settings.quickNavNote": "对话区右侧的轮次刻度条：悬停预览该轮问答，点击跳转；开启后窄窗口下也保持显示，刻度悬停可见轮次号。",
       "settings.quickNavLinkNote": "点击导航刻度跳转对话时，已打开的概览同步切换到对应轮次。",
+      "settings.interaction": "交互",
+      "settings.todoPromptRow": "双击待办生成提示词",
+      "settings.todoPromptTemplate": "提示词模板",
+      "settings.todoPromptNote": "双击进展中的待办行，把重执行提示词填入输入框。",
+      "settings.todoPromptTemplateNote": "模板留空则使用内置提示词；支持占位符 {index}（步骤序号）与 {content}（步骤内容）。",
       "settings.placementRow": "概览显示位置",
       "settings.viking": "OpenViking 记忆预览",
       "settings.vikingEnable": "启用记忆预览",
@@ -95,12 +119,12 @@ window.__ModuleLoader__.load({
       "viking.dirEmpty": "此目录为空",
       "viking.field.scenarios": "使用场景",
       "viking.field.keywords": "关键词",
+      "viking.field.source": "来源",
       "reference.sort.time": "时间",
-      "reference.sort.kind": "类型",
       "reference.sort.count": "次数",
       "reference.sort.time.title": "按最近引用排序",
-      "reference.sort.kind.title": "按类型分组排序（记忆、文件、技能、会话、上下文）",
       "reference.sort.count.title": "按引用次数排序",
+      "reference.sort.cancel": "点击取消排序",
       "reference.previewHint": "点击预览注入的内容快照",
       "scope.label": "概览范围",
       "scope.latest": "最新一轮",
@@ -178,11 +202,22 @@ window.__ModuleLoader__.load({
       "progress.empty": "Progress appears here once tasks or todos are generated",
       "progress.emptyTurn": "No task plan was created in this turn",
       "progress.recentSteps": "Key steps in this turn (latest 6)",
-      "progress.todoHint": "Click to fill the composer with a re-run prompt for this step",
+      "progress.allSteps": "Key steps in this turn (all)",
+      "progress.showEarlierSteps": "Show earlier steps",
+      "progress.moreStepsCount": "{n} more steps",
+      "progress.hideEarlierSteps": "Hide earlier steps",
+      "progress.expandTeam": "Expand team details",
+      "progress.collapseTeam": "Collapse team details",
+      "progress.todoHint": "Double-click to fill the composer with a re-run prompt for this step",
       "progress.todoInserted": "Added to the composer",
       "progress.todoCopied": "Composer not found — prompt copied to the clipboard",
       "progress.todoFailed": "Could not fill the composer, try again",
       "progress.waiting": "Waiting for confirmation",
+      "team.phase.provisioning": "Provisioning",
+      "team.phase.active": "Active",
+      "team.phase.inactive": "Inactive",
+      "team.phase.failed": "Failed",
+      "team.blocked": "Blocked {n}",
       "progress.counts": "{completed} of {total} completed",
       "artifacts.empty": "Files produced in this conversation appear here",
       "artifacts.viewAll": "Review all changes",
@@ -193,6 +228,12 @@ window.__ModuleLoader__.load({
       "settings.showProgress": "Progress (tasks and todos)",
       "settings.showArtifacts": "Artifacts (files produced)",
       "settings.showReferences": "References (context, memories)",
+      "settings.showStats": "Stats (duration, tool calls, …)",
+      "settings.timeMode": "Time display",
+      "settings.timeMode.clock": "Clock time",
+      "settings.timeMode.elapsed": "Turn elapsed (from 0s)",
+      "settings.feedbackGroup": "Feedback",
+      "settings.feedback": "Report an issue (GitHub Issues)",
       "settings.fullHeightRow": "Show sections in full (no max height)",
       "settings.fullHeightNote": "When off, Progress/Artifacts/References cap their height and scroll inside each section.",
       "settings.layout": "Layout",
@@ -210,6 +251,11 @@ window.__ModuleLoader__.load({
       "settings.quickNavLinkRow": "Link rail with overview",
       "settings.quickNavNote": "The turn rail on the right edge of the chat: hover for a turn preview, click to jump. When enabled it stays visible in narrow windows too, and ticks show their turn number on hover.",
       "settings.quickNavLinkNote": "When you click a rail tick to jump, an open overview switches to that turn as well.",
+      "settings.interaction": "Interaction",
+      "settings.todoPromptRow": "Double-click todo prompt",
+      "settings.todoPromptTemplate": "Prompt template",
+      "settings.todoPromptNote": "Double-click a todo row in Progress to fill the rerun prompt into the composer.",
+      "settings.todoPromptTemplateNote": "Leave empty for the built-in prompt; placeholders: {index} (step number), {content} (step text).",
       "settings.placementRow": "Show the overview in",
       "settings.viking": "OpenViking memory preview",
       "settings.vikingEnable": "Enable memory preview",
@@ -227,12 +273,12 @@ window.__ModuleLoader__.load({
       "viking.dirEmpty": "This directory is empty",
       "viking.field.scenarios": "Usage scenarios",
       "viking.field.keywords": "Keywords",
+      "viking.field.source": "Source",
       "reference.sort.time": "Time",
-      "reference.sort.kind": "Kind",
       "reference.sort.count": "Count",
       "reference.sort.time.title": "Sort by most recently referenced",
-      "reference.sort.kind.title": "Group by kind (memories, files, skills, sessions, context)",
       "reference.sort.count.title": "Sort by reference count",
+      "reference.sort.cancel": "Click again to clear",
       "reference.previewHint": "Click to preview the injected content snapshot",
       "scope.label": "Scope",
       "scope.latest": "Latest turn",
@@ -322,8 +368,12 @@ window.__ModuleLoader__.load({
         showProgress: flag(source.showProgress),
         showArtifacts: flag(source.showArtifacts),
         showReferences: flag(source.showReferences),
+        showStats: flag(source.showStats),
+        timeMode: TIME_MODES.indexOf(source.timeMode) !== -1 ? source.timeMode : "clock",
         placement: PLACEMENTS.indexOf(source.placement) !== -1 ? source.placement : "both",
         sectionFullHeight: source.sectionFullHeight === true,
+        todoPrompt: typeof source.todoPrompt === "boolean" ? source.todoPrompt : true,
+        todoPromptTemplate: typeof source.todoPromptTemplate === "string" ? source.todoPromptTemplate : "",
         quickNav: typeof source.quickNav === "boolean" ? source.quickNav : true,
         quickNavLink: typeof source.quickNavLink === "boolean" ? source.quickNavLink : true,
         vikingPreview: typeof source.vikingPreview === "boolean" ? source.vikingPreview : true,
@@ -452,8 +502,18 @@ window.__ModuleLoader__.load({
       return String(value).padStart(2, "0");
     }
 
-    function formatTime(time) {
+    /** Compact "since turn start" reading: 0s → 59s → 3m05s → 1h02m. */
+    function formatElapsed(ms) {
+      const sec = Math.max(0, Math.floor(ms / 1000));
+      if (sec < 60) return `${sec}s`;
+      const min = Math.floor(sec / 60);
+      if (min < 60) return `${min}m${pad2(sec % 60)}s`;
+      return `${Math.floor(min / 60)}h${pad2(min % 60)}m`;
+    }
+
+    function formatTime(time, mode, base) {
       if (typeof time !== "number" || !Number.isFinite(time) || time <= 0) return "";
+      if (mode === "elapsed" && typeof base === "number" && base > 0 && time >= base) return formatElapsed(time - base);
       const date = new Date(time);
       const now = new Date();
       const hm = `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
@@ -1106,18 +1166,28 @@ window.__ModuleLoader__.load({
         pending: new Map(),
         changes: [],
         steps: [],
+        anchors: [],
         stepByCall: new Map(),
         byTurn: new Map(),
+        members: new Map(),
+        teamTasks: new Map(),
+        subagents: new Map(),
         stats: createStats(),
         changed: false,
       };
     }
 
-    function createTurnBucket() {
-      return { artifacts: new Map(), refs: new Map(), refOrder: [], changes: [], steps: [], stats: createStats() };
+    /** Upsert one team/member, team/task or subagent/catalog record; first observation time is kept. */
+    function upsertTeamRecord(map, key, record) {
+      const existing = map.get(key);
+      map.set(key, existing === undefined ? { ...record, firstTime: record.time } : { ...existing, ...record, firstTime: existing.firstTime });
     }
 
-    const EMPTY_BUCKET = Object.freeze({ artifacts: new Map(), refs: new Map(), refOrder: [], changes: [], steps: [], stats: Object.freeze(createStats()) });
+    function createTurnBucket() {
+      return { artifacts: new Map(), refs: new Map(), refOrder: [], changes: [], steps: [], anchors: [], members: new Map(), teamTasks: new Map(), subagents: new Map(), stats: createStats() };
+    }
+
+    const EMPTY_BUCKET = Object.freeze({ artifacts: new Map(), refs: new Map(), refOrder: [], changes: [], steps: [], anchors: [], members: new Map(), teamTasks: new Map(), subagents: new Map(), stats: Object.freeze(createStats()) });
 
     function turnBucket(folder, turn) {
       let bucket = folder.byTurn.get(turn);
@@ -1182,23 +1252,27 @@ window.__ModuleLoader__.load({
       for (const listener of [...navScopeStore.listeners]) listener();
     }
 
-    /* Re-run prompt for one todo step (template provided by the user). */
-    function rerunPrompt(number, content) {
-      return [
-        "请查看当前任务的完整 TODO 计划，重新执行以下指定步骤：",
-        "",
-        `**目标步骤：${number}. ${content}**`,
-        "",
-        "要求：",
-        "1. 查看完整计划及相关上下文，明确目标步骤的执行要求和前置依赖。",
-        "2. 无论该步骤当前状态如何，都必须重新检查并实际执行，不得直接跳过。",
-        "3. 仅处理目标步骤所需内容，避免重复执行其他步骤或修改无关内容。",
-        "4. 执行必要的测试或验证，如实反馈结果。",
-        "5. 更新目标步骤的 TODO 状态，保持其他步骤状态不变。",
-        "6. 汇报执行结果、修改内容及未解决的问题。",
-        "",
-        "**请直接执行，不要只提供方案。**",
-      ].join("\n");
+    /* Re-run prompt for one todo step. Placeholder {index}/{content} are substituted;
+       an empty template falls back to the built-in default. */
+    const DEFAULT_TODO_TEMPLATE = [
+      "请查看当前任务的完整 TODO 计划，重新执行以下指定步骤：",
+      "",
+      "**目标步骤：{index}. {content}**",
+      "",
+      "要求：",
+      "1. 查看完整计划及相关上下文，明确目标步骤的执行要求和前置依赖。",
+      "2. 无论该步骤当前状态如何，都必须重新检查并实际执行，不得直接跳过。",
+      "3. 仅处理目标步骤所需内容，避免重复执行其他步骤或修改无关内容。",
+      "4. 执行必要的测试或验证，如实反馈结果。",
+      "5. 更新目标步骤的 TODO 状态，保持其他步骤状态不变。",
+      "6. 汇报执行结果、修改内容及未解决的问题。",
+      "",
+      "**请直接执行，不要只提供方案。**",
+    ].join("\n");
+
+    function rerunPrompt(number, content, template) {
+      const source = typeof template === "string" && template.trim() !== "" ? template : DEFAULT_TODO_TEMPLATE;
+      return source.split("{index}").join(String(number)).split("{content}").join(String(content));
     }
 
     /** The visible Lexical chat composer root (contenteditable textbox), or null. */
@@ -1370,9 +1444,18 @@ window.__ModuleLoader__.load({
 
     /* Key-step stream: every tool call is one step; the result marks it done. Shown by
        the Progress section when a turn has no todo plan of its own. */
-    const STEP_CAP = 40;
+    const STEP_CAP = 200;
 
     /** One-line human target for a tool call: file, command, query, url, name… */
+    /** Team-record key a tool call creates: teammate name / task subject / subagent label. */
+    function teamStepKey(name, args) {
+      if (!isRecord(args)) return undefined;
+      if (name === "spawn_teammate" && typeof args.name === "string" && args.name !== "") return args.name;
+      if (name === "team_task_create" && typeof args.subject === "string" && args.subject !== "") return args.subject;
+      if ((name === "subagent" || name === "subagent_fork") && typeof args.description === "string" && args.description !== "") return args.description;
+      return undefined;
+    }
+
     function stepDetail(name, args) {
       if (!isRecord(args)) return "";
       const keys = ["file_path", "path", "command", "pattern", "url", "query", "prompt", "subject", "description", "name", "uri", "target", "id"];
@@ -1405,7 +1488,16 @@ window.__ModuleLoader__.load({
       return text.length > 4000 ? text.slice(0, 4000) : text;
     }
 
+    const ANCHOR_CAP = 8;
     function addStep(folder, bucket, step) {
+      if (typeof step.teamKey === "string") {
+        folder.anchors.push(step);
+        if (folder.anchors.length > ANCHOR_CAP) folder.anchors.shift();
+        if (isRecord(bucket) && Array.isArray(bucket.anchors)) {
+          bucket.anchors.push(step);
+          if (bucket.anchors.length > ANCHOR_CAP) bucket.anchors.shift();
+        }
+      }
       folder.steps.push(step);
       if (folder.steps.length > STEP_CAP) {
         const dropped = folder.steps.shift();
@@ -1465,6 +1557,57 @@ window.__ModuleLoader__.load({
           touch(folder);
           return;
         }
+        case "team/member": {
+          if (!isRecord(data) || !isRecord(data.member)) return;
+          const member = data.member;
+          if (typeof member.id !== "string" || member.id === "" || typeof member.name !== "string") return;
+          const memberRecord = {
+            id: member.id,
+            name: member.name,
+            description: typeof member.description === "string" ? member.description : "",
+            phase: typeof member.phase === "string" ? member.phase : "",
+            seq: event.seq,
+            time: typeof event.time === "number" ? event.time : 0,
+          };
+          upsertTeamRecord(folder.members, member.id, memberRecord);
+          upsertTeamRecord(turnBucket(folder, folder.currentTurn).members, member.id, memberRecord);
+          touch(folder);
+          return;
+        }
+        case "team/task": {
+          if (!isRecord(data) || !isRecord(data.task)) return;
+          const task = data.task;
+          if (typeof task.id !== "string" || task.id === "" || typeof task.subject !== "string") return;
+          const taskRecord = {
+            id: task.id,
+            subject: task.subject,
+            description: typeof task.description === "string" ? task.description : "",
+            status: typeof task.status === "string" ? task.status : "",
+            ownerId: typeof task.ownerId === "string" ? task.ownerId : undefined,
+            blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy.filter((item) => typeof item === "string") : [],
+            revision: typeof task.revision === "number" ? task.revision : 0,
+            seq: event.seq,
+            time: typeof event.time === "number" ? event.time : 0,
+          };
+          upsertTeamRecord(folder.teamTasks, task.id, taskRecord);
+          upsertTeamRecord(turnBucket(folder, folder.currentTurn).teamTasks, task.id, taskRecord);
+          touch(folder);
+          return;
+        }
+        case "subagent/catalog": {
+          if (!isRecord(data) || typeof data.childId !== "string" || data.childId === "") return;
+          const subRecord = {
+            childId: data.childId,
+            label: typeof data.label === "string" ? data.label : "",
+            mode: typeof data.mode === "string" ? data.mode : "",
+            seq: event.seq,
+            time: typeof event.time === "number" ? event.time : 0,
+          };
+          upsertTeamRecord(folder.subagents, data.childId, subRecord);
+          upsertTeamRecord(turnBucket(folder, folder.currentTurn).subagents, data.childId, subRecord);
+          touch(folder);
+          return;
+        }
         case "workspace/changes": {
           if (!isRecord(data) || typeof data.turn !== "number" || !Number.isSafeInteger(data.turn) || data.turn < 1) return;
           if (typeof event.seq !== "number") return;
@@ -1495,7 +1638,7 @@ window.__ModuleLoader__.load({
           const name = data.name;
           const args = parseArgs(data.arguments);
           const callBucket = turnBucket(folder, folder.currentTurn);
-          addStep(folder, callBucket, { callId, name, detail: stepDetail(name, args), full: stepFull(name, args), done: false, seq: event.seq, time: event.time });
+          addStep(folder, callBucket, { callId, name, detail: stepDetail(name, args), full: stepFull(name, args), teamKey: teamStepKey(name, args), done: false, seq: event.seq, time: event.time });
           folder.stats.toolCalls += 1;
           callBucket.stats.toolCalls += 1;
           if (name === "bash") {
@@ -1715,13 +1858,32 @@ window.__ModuleLoader__.load({
         errors: st.errors,
         files: st.files.size,
       };
+      /* Agent-team projections: members, shared board tasks, and non-team subagents. */
+      const byFirstTime = (left, right) => (left.firstTime || left.time || 0) - (right.firstTime || right.time || 0) || (left.seq || 0) - (right.seq || 0);
+      const mapValues = (map) => (map instanceof Map ? [...map.values()] : []);
+      const members = mapValues(source.members).sort(byFirstTime);
+      const subagents = mapValues(source.subagents)
+        .filter((sub) => !(source.members instanceof Map && source.members.has(sub.childId)))
+        .sort(byFirstTime);
+      const team = { members, tasks: mapValues(source.teamTasks).sort(byFirstTime), subagents };
+      /* team anchor steps (spawn/task-create/subagent) stay pinned above the recent window
+         so member/task rows can nest under their creating step */
+      const allSteps = Array.isArray(source.steps) ? source.steps : [];
+      const recentSteps = allSteps.slice(-6);
+      const anchorCandidates = [...(Array.isArray(source.anchors) ? source.anchors : []), ...allSteps].filter(
+        (step, index, list) => isRecord(step) && typeof step.teamKey === "string" && list.indexOf(step) === index && recentSteps.indexOf(step) === -1
+      );
+      const anchorSteps = anchorCandidates.slice(-6);
       return {
         todos,
         todosTime,
         artifacts,
         references,
-        steps: Array.isArray(source.steps) ? source.steps.slice(-6) : [],
+        steps: [...anchorSteps, ...recentSteps],
+        stepsAll: allSteps.slice(),
+        team,
         stats,
+        turnStart: st.start > 0 ? st.start : null,
         changeTurns: changeTurns.slice(),
         hasMore: windowSnapshot.hasMore === true,
         localeRev,
@@ -1731,7 +1893,7 @@ window.__ModuleLoader__.load({
       };
     }
 
-    const EMPTY_STATE = { todos: null, todosTime: 0, artifacts: [], references: [], steps: [], stats: { durationMs: 0, toolCalls: 0, commands: 0, errors: 0, files: 0 }, changeTurns: [], hasMore: false, localeRev: 0, turns: [], latestTurn: null, scope: "latest" };
+    const EMPTY_STATE = { todos: null, todosTime: 0, artifacts: [], references: [], steps: [], stepsAll: [], team: { members: [], tasks: [], subagents: [] }, stats: { durationMs: 0, toolCalls: 0, commands: 0, errors: 0, files: 0 }, turnStart: null, changeTurns: [], hasMore: false, localeRev: 0, turns: [], latestTurn: null, scope: "latest" };
 
     function createSummaryStore(binding) {
       const source = binding.eventSource;
@@ -1903,7 +2065,7 @@ window.__ModuleLoader__.load({
           /* Prefer the jump loader: it pages back until the window covers seq and
              survives concurrent loaders. loadOlder() is a no-op while another load
              is in flight, so retry until the window actually stops reporting more. */
-          for (let attempt = 0; attempt < 40 && !cancelled; attempt += 1) {
+          for (let attempt = 0; attempt < 200 && !cancelled; attempt += 1) {
             const snapshot = binding.eventSource.getSnapshot();
             if (!isRecord(snapshot) || snapshot.hasMore !== true) return;
             const session = binding.session;
@@ -2677,6 +2839,14 @@ function FileTypeIcon(props) {
       return svg(size, className, [h("path", { key: "a", d: "m5.8 3.6 4.4 4.4-4.4 4.4", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round" })]);
     }
 
+    function IconHistory({ size = 16, className }) {
+      return svg(size, className, [
+        h("path", { key: "a", d: "M2.6 8a5.4 5.4 0 1 0 5.4-5.4A5.9 5.9 0 0 0 3.9 4.3L2.6 5.6", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round" }),
+        h("path", { key: "b", d: "M2.6 2.4v3.2h3.2", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round" }),
+        h("path", { key: "c", d: "M8 4.9v3.2l2.7 1.5", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round" }),
+      ]);
+    }
+
     function IconCompare({ size = 16, className }) {
       return svg(size, className, [
         h("path", { key: "a", d: "M3 5.4h8.2M9.2 3.4l2 2-2 2", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round" }),
@@ -2695,6 +2865,13 @@ function FileTypeIcon(props) {
     function IconFilter({ size = 16, className }) {
       return svg(size, className, [
         h("path", { key: "a", d: "M2.6 3.6h10.8L9.2 8.6v4.2l-2.4-1.3V8.6Z", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round" }),
+      ]);
+    }
+
+    function IconAgent({ size = 16, className }) {
+      return svg(size, className, [
+        h("circle", { key: "a", cx: 8, cy: 5.4, r: 2.5, stroke: "currentColor" }),
+        h("path", { key: "b", d: "M3.4 13c.7-2.2 2.4-3.4 4.6-3.4S12 10.8 12.6 13", stroke: "currentColor", strokeLinecap: "round" }),
       ]);
     }
 
@@ -2732,12 +2909,13 @@ function FileTypeIcon(props) {
 
     /* References ordering, shared by both surfaces and persisted per browser. */
     const REF_SORT_KEY = "dsh.conversationOverview.refSort";
-    const REF_SORT_MODES = ["time", "kind", "count"];
+    const REF_SORT_MODES = ["time", "count"];
     const KIND_ORDER = ["memory-file", "memory", "file", "skill", "session", "context"];
 
     function readStoredRefSort() {
       try {
         const value = globalThis.localStorage ? globalThis.localStorage.getItem(REF_SORT_KEY) : null;
+        if (value === "none") return "";
         return REF_SORT_MODES.indexOf(value) !== -1 ? value : "time";
       } catch (_unreadable) {
         return "time";
@@ -2747,10 +2925,11 @@ function FileTypeIcon(props) {
     const refSortStore = { mode: readStoredRefSort(), listeners: new Set() };
 
     function setRefSort(mode) {
-      if (REF_SORT_MODES.indexOf(mode) === -1 || refSortStore.mode === mode) return;
-      refSortStore.mode = mode;
+      const next = mode === "" ? "" : REF_SORT_MODES.indexOf(mode) !== -1 ? mode : undefined;
+      if (next === undefined || refSortStore.mode === next) return;
+      refSortStore.mode = next;
       try {
-        if (globalThis.localStorage) globalThis.localStorage.setItem(REF_SORT_KEY, mode);
+        if (globalThis.localStorage) globalThis.localStorage.setItem(REF_SORT_KEY, next === "" ? "none" : next);
       } catch (_unwritable) {
         /* the choice still applies for this page load */
       }
@@ -2867,7 +3046,6 @@ function FileTypeIcon(props) {
     /** Incoming order is newest-first; kind/count modes re-rank, breaking ties by recency. */
     function sortReferences(refs, mode) {
       const byRecency = (left, right) => (right.time || right.seq || 0) - (left.time || left.seq || 0) || (right.seq || 0) - (left.seq || 0);
-      if (mode === "kind") return refs.slice().sort((left, right) => kindRank(left.kind) - kindRank(right.kind) || byRecency(left, right));
       if (mode === "count") return refs.slice().sort((left, right) => (right.count || 1) - (left.count || 1) || byRecency(left, right));
       return refs;
     }
@@ -2907,6 +3085,14 @@ function FileTypeIcon(props) {
       completed: "todo.completed",
     };
 
+    /* Agent-team member phases (tooltip text; status is conveyed by icons). */
+    const MEMBER_PHASE_KEYS = {
+      provisioning: "team.phase.provisioning",
+      active: "team.phase.active",
+      inactive: "team.phase.inactive",
+      failed: "team.phase.failed",
+    };
+
     const GOAL_PHASE_KEYS = {
       active: "goal.active",
       paused: "goal.paused",
@@ -2921,13 +3107,17 @@ function FileTypeIcon(props) {
       complete: "success",
     };
 
-    function ProgressSection({ summary, goal, t, waiting }) {
+    function ProgressSection({ summary, goal, t, waiting, cfg }) {
+      const fmtTime = (ts) => formatTime(ts, cfg.timeMode, summary.turnStart);
+      const timeTitle = (ts) => (cfg.timeMode === "elapsed" ? formatTime(ts) : undefined);
       /* todo → composer prompt flash */
       const [promptFlash, setPromptFlash] = React.useState(null);
       const flashTimer = React.useRef(undefined);
       /* step → copy summary flash */
       const [stepFlash, setStepFlash] = React.useState(null);
       const copyTimer = React.useRef(undefined);
+      /* per-member expansion overrides for the merged team rows */
+      const [teamExpanded, setTeamExpanded] = React.useState(null);
       React.useEffect(
         () => () => {
           if (flashTimer.current !== undefined) clearTimeout(flashTimer.current);
@@ -2935,8 +3125,11 @@ function FileTypeIcon(props) {
         },
         []
       );
+      const todoPromptOn = !isRecord(cfg) || cfg.todoPrompt !== false;
+      const todoPromptTemplate = isRecord(cfg) && typeof cfg.todoPromptTemplate === "string" ? cfg.todoPromptTemplate : "";
       const onTodoClick = (index, content) => {
-        const result = insertIntoComposer(rerunPrompt(index + 1, content));
+        if (!todoPromptOn) return;
+        const result = insertIntoComposer(rerunPrompt(index + 1, content, todoPromptTemplate));
         if (flashTimer.current !== undefined) clearTimeout(flashTimer.current);
         setPromptFlash({ index, state: result });
         flashTimer.current = setTimeout(() => {
@@ -2972,15 +3165,24 @@ function FileTypeIcon(props) {
       };
       /* steps: newest-first window; keep the evicted bottom row as a fading ghost */
       const steps = Array.isArray(summary.steps) ? summary.steps.filter((step) => isRecord(step)) : [];
+      const stepsAll = Array.isArray(summary.stepsAll) ? summary.stepsAll.filter((step) => isRecord(step)) : [];
       const [ghost, setGhost] = React.useState(null);
+      const [stepsExpanded, setStepsExpanded] = React.useState(false);
       const ghostTimer = React.useRef(undefined);
       const prevSteps = React.useRef([]);
       const prevScope = React.useRef(summary.scope);
       /* enter animation only for rows that arrive while mounted; first paint per scope is silent */
       const stepKeyOf = (step, index) => (typeof step.callId === "string" && step.callId !== "" ? `step-${step.callId}` : `step-idx-${index}`);
       const seenSteps = React.useRef(null);
+      /* full retained history for the expander: anchors outside the window + the whole bucket */
+      const allStepIds = new Set(stepsAll.map((step) => step.callId).filter((id) => typeof id === "string"));
+      const anchorExtras = steps.filter((step) => typeof step.callId === "string" && !allStepIds.has(step.callId));
+      const expandedSteps = [...anchorExtras, ...stepsAll];
+      const canExpand = expandedSteps.length > steps.length;
+      const stepsOpen = stepsExpanded && canExpand;
+      const displaySteps = stepsOpen ? expandedSteps : steps;
       if (seenSteps.current === null || seenSteps.current.scope !== summary.scope) {
-        seenSteps.current = { scope: summary.scope, keys: new Set(steps.map(stepKeyOf)) };
+        seenSteps.current = { scope: summary.scope, keys: new Set(displaySteps.map(stepKeyOf)) };
       }
       React.useEffect(
         () => () => {
@@ -3006,6 +3208,173 @@ function FileTypeIcon(props) {
           setGhost(null);
         }, 400);
       }, [steps]);
+      /* team data + todos drive both the merged list and the step nesting */
+      const team = isRecord(summary.team) ? summary.team : null;
+      const members = team && Array.isArray(team.members) ? team.members.filter((member) => isRecord(member)) : [];
+      const teamTasks = team && Array.isArray(team.tasks) ? team.tasks.filter((task) => isRecord(task)) : [];
+      const subagents = team && Array.isArray(team.subagents) ? team.subagents.filter((sub) => isRecord(sub)) : [];
+      const todos = Array.isArray(summary.todos) ? summary.todos : null;
+      const hasTodos = todos !== null && todos.length > 0;
+      const hasTeam = members.length + teamTasks.length + subagents.length > 0;
+      const showSteps = !hasTodos && steps.length > 0;
+      const flashOf = (key) => (stepFlash !== null && isRecord(stepFlash) && stepFlash.key === key ? stepFlash.state : null);
+      const overrideOf = (key, fallback) => {
+        const stored = teamExpanded !== null && isRecord(teamExpanded) ? teamExpanded[key] : undefined;
+        return typeof stored === "boolean" ? stored : fallback;
+      };
+      const toggleKey = (key, next) => setTeamExpanded({ ...(teamExpanded !== null && isRecord(teamExpanded) ? teamExpanded : {}), [key]: next });
+      const ownedBy = (id) => teamTasks.filter((task) => task.ownerId === id);
+      const taskRow = (task, depth) => {
+        const status = TODO_KEYS[task.status] ? task.status : "pending";
+        const blocked = Array.isArray(task.blockedBy) ? task.blockedBy.length : 0;
+        const flash = flashOf(`teamtask-${task.id}`);
+        const titleParts = [task.subject];
+        if (task.description !== "") titleParts.push(task.description);
+        titleParts.push(blocked > 0 ? `${t(TODO_KEYS[status])} · ${t("team.blocked", { n: blocked })}` : t(TODO_KEYS[status]));
+        return h(
+          "div",
+          {
+            className: "dsov-todo dsov-task",
+            key: `task-${task.id}`,
+            "data-status": status,
+            "data-depth": depth > 0 ? String(depth) : undefined,
+            "data-flash": flash === "ok" ? "ok" : flash === "err" ? "err" : undefined,
+            title: titleParts.join("\n\n"),
+            onClick: () => onStepClick({ callId: `teamtask-${task.id}`, name: task.subject, full: task.subject, seq: task.seq }),
+          },
+          h("span", { className: "dsov-todoIcon", "data-status": status }, h(TodoStatusIcon, { status })),
+          h("span", { className: "dsov-taskSubject" }, task.subject),
+          h("span", { className: "dsov-time", title: timeTitle(task.time) }, fmtTime(task.time))
+        );
+      };
+      const subRow = (sub, depth) => {
+        const flash = flashOf(`subagent-${sub.childId}`);
+        return h(
+          "div",
+          {
+            className: "dsov-todo dsov-subagent",
+            key: `subagent-${sub.childId}`,
+            "data-depth": depth > 0 ? String(depth) : undefined,
+            "data-flash": flash === "ok" ? "ok" : flash === "err" ? "err" : undefined,
+            title: sub.label !== "" ? sub.label : sub.childId,
+            onClick: () => onStepClick({ callId: `subagent-${sub.childId}`, name: sub.label, full: sub.label !== "" ? sub.label : sub.childId, seq: sub.seq }),
+          },
+          h("span", { className: "dsov-todoIcon dsov-agentIcon" }, h(IconAgent, { size: 14 })),
+          h("span", { className: "dsov-memberName" }, sub.label !== "" ? sub.label : sub.childId),
+          sub.mode !== "" ? h("span", { className: "dsov-badge", "data-tone": "quiet" }, sub.mode) : null,
+          h("span", { className: "dsov-time", title: timeTitle(sub.time) }, fmtTime(sub.time))
+        );
+      };
+      const memberIcon = (member, owned) => {
+        const phase = typeof member.phase === "string" ? member.phase : "";
+        if (phase === "failed") {
+          return h(
+            "span",
+            { className: "dsov-todoIcon", "data-status": "failed" },
+            h(
+              "svg",
+              { width: 14, height: 14, viewBox: "0 0 14 14", fill: "none", "aria-hidden": "true" },
+              h("circle", { cx: 7, cy: 7, r: 5.6, stroke: "currentColor", strokeWidth: 1.3 }),
+              h("path", { d: "M7 4v3.6", stroke: "currentColor", strokeWidth: 1.3, strokeLinecap: "round" }),
+              h("circle", { cx: 7, cy: 9.9, r: 0.8, fill: "currentColor" })
+            )
+          );
+        }
+        if (owned.length > 0 && owned.every((task) => task.status === "completed")) {
+          return h("span", { className: "dsov-todoIcon", "data-status": "completed" }, h(TodoStatusIcon, { status: "completed" }));
+        }
+        return h("span", { className: "dsov-todoIcon dsov-agentIcon" }, h(IconAgent, { size: 14 }));
+      };
+      const memberRow = (member, depth, expandable, open) => {
+        const owned = ownedBy(member.id);
+        const phase = typeof member.phase === "string" ? member.phase : "";
+        const titleParts = [];
+        if (member.description !== "") titleParts.push(member.description);
+        if (MEMBER_PHASE_KEYS[phase]) titleParts.push(t(MEMBER_PHASE_KEYS[phase]));
+        return h(
+          "div",
+          {
+            className: "dsov-todo dsov-member",
+            key: `member-${member.id}`,
+            "data-depth": depth > 0 ? String(depth) : undefined,
+            "data-expandable": expandable ? "true" : "false",
+            "data-open": expandable ? (open ? "true" : "false") : undefined,
+            title: titleParts.length > 0 ? titleParts.join(" · ") : member.name,
+            onClick: expandable ? () => toggleKey(`member:${member.id}`, !open) : undefined,
+          },
+          expandable ? h("span", { className: "dsov-chevron", "data-open": open ? "true" : "false" }, h(IconChevron, { size: 11 })) : null,
+          memberIcon(member, owned),
+          h("span", { className: "dsov-memberName" }, member.name),
+          h("span", { className: "dsov-memberDesc" }, member.description),
+          h("span", { className: "dsov-time", title: timeTitle(member.time) }, fmtTime(member.time))
+        );
+      };
+      /* attach team records under their creating step (steps view only) */
+      const consumedMembers = new Set();
+      const consumedTasks = new Set();
+      const consumedSubs = new Set();
+      const stepAttachments = new Map();
+      if (showSteps && hasTeam) {
+        displaySteps.forEach((step, index) => {
+          const teamKey = typeof step.teamKey === "string" ? step.teamKey : "";
+          if (teamKey === "" || typeof step.name !== "string") return;
+          const attached = [];
+          if (step.name === "spawn_teammate") {
+            const member = members.find((candidate) => candidate.name === teamKey && !consumedMembers.has(candidate.id));
+            if (member !== undefined) {
+              consumedMembers.add(member.id);
+              const phase = typeof member.phase === "string" ? member.phase : "";
+              attached.push({ row: memberRow(member, 1, false, false), unfinished: phase === "provisioning" || phase === "active" });
+              ownedBy(member.id).forEach((task) => {
+                if (consumedTasks.has(task.id)) return;
+                consumedTasks.add(task.id);
+                attached.push({ row: taskRow(task, 2), unfinished: task.status !== "completed" });
+              });
+            }
+          } else if (step.name === "subagent" || step.name === "subagent_fork") {
+            const sub = subagents.find((candidate) => (candidate.label === teamKey || candidate.childId === teamKey) && !consumedSubs.has(candidate.childId));
+            if (sub !== undefined) {
+              consumedSubs.add(sub.childId);
+              attached.push({ row: subRow(sub, 1), unfinished: false });
+            }
+          } else if (step.name === "team_task_create") {
+            /* owned tasks nest under their member instead; only unowned tasks attach here */
+            const task = teamTasks.find(
+              (candidate) =>
+                candidate.subject === teamKey &&
+                !consumedTasks.has(candidate.id) &&
+                !(typeof candidate.ownerId === "string" && members.some((member) => member.id === candidate.ownerId))
+            );
+            if (task !== undefined) {
+              consumedTasks.add(task.id);
+              attached.push({ row: taskRow(task, 1), unfinished: task.status !== "completed" });
+            }
+          }
+          if (attached.length > 0) stepAttachments.set(stepKeyOf(step, index), attached);
+        });
+      }
+      /* records not attached to a visible step render flat in the list */
+      const pushFlatTeam = (target) => {
+        teamTasks.forEach((task) => {
+          if (consumedTasks.has(task.id)) return;
+          const ownerKnown = typeof task.ownerId === "string" && members.some((member) => member.id === task.ownerId);
+          if (ownerKnown) return;
+          target.push(taskRow(task, 0));
+        });
+        members.forEach((member) => {
+          if (consumedMembers.has(member.id)) return;
+          const owned = ownedBy(member.id).filter((task) => !consumedTasks.has(task.id));
+          const expandable = owned.length > 0;
+          const phase = typeof member.phase === "string" ? member.phase : "";
+          const open = expandable ? overrideOf(`member:${member.id}`, owned.some((task) => task.status !== "completed") || phase === "provisioning") : false;
+          target.push(memberRow(member, 0, expandable, open));
+          if (expandable && open) owned.forEach((task) => target.push(taskRow(task, 1)));
+        });
+        subagents.forEach((sub) => {
+          if (consumedSubs.has(sub.childId)) return;
+          target.push(subRow(sub, 0));
+        });
+      };
       const stepRow = (step, key, extraProps, isWaiting) => {
         const stepRunning = step.done !== true;
         const failed = step.error === true;
@@ -3013,7 +3382,10 @@ function FileTypeIcon(props) {
         const detail = typeof step.detail === "string" && step.detail !== "" ? step.detail : "";
         const full = typeof step.full === "string" && step.full !== "" ? step.full : detail !== "" ? detail : typeof step.name === "string" ? step.name : "";
         const flash = stepFlash !== null && isRecord(stepFlash) && stepFlash.key === (typeof step.callId === "string" && step.callId !== "" ? step.callId : `${step.name}|${step.seq}`) ? stepFlash.state : null;
-        return h(
+        const attached = stepAttachments.get(key);
+        const expandable = Array.isArray(attached) && attached.length > 0;
+        const open = expandable ? overrideOf(`step:${key}`, attached.some((item) => item.unfinished)) : false;
+        const row = h(
           "div",
           {
             className: "dsov-step",
@@ -3025,6 +3397,21 @@ function FileTypeIcon(props) {
             ...(extraProps === undefined ? {} : extraProps),
             onClick: () => onStepClick(step),
           },
+          expandable
+            ? h(
+                "span",
+                {
+                  className: "dsov-chevron dsov-stepChevron",
+                  "data-open": open ? "true" : "false",
+                  title: t(open ? "progress.collapseTeam" : "progress.expandTeam"),
+                  onClick: (event) => {
+                    event.stopPropagation();
+                    toggleKey(`step:${key}`, !open);
+                  },
+                },
+                h(IconChevron, { size: 11 })
+              )
+            : null,
           waitingRow
             ? h(
                 "span",
@@ -3039,8 +3426,14 @@ function FileTypeIcon(props) {
             : h("span", { className: "dsov-todoIcon", "data-status": stepRunning ? "in_progress" : "completed" }, h(TodoStatusIcon, { status: stepRunning ? "in_progress" : "completed" })),
           h("span", { className: "dsov-stepName" }, typeof step.name === "string" ? step.name : ""),
           h("span", { className: "dsov-stepDetail" }, detail),
-          h("span", { className: "dsov-time" }, formatTime(typeof step.endTime === "number" ? step.endTime : step.time))
+          h("span", { className: "dsov-time", title: timeTitle(typeof step.endTime === "number" ? step.endTime : step.time) }, fmtTime(typeof step.endTime === "number" ? step.endTime : step.time))
         );
+        return expandable && open ? [row, ...attached.map((item) => item.row)] : row;
+      };
+      const pushStepRow = (target, step, key, extraProps, isWaiting) => {
+        const rendered = stepRow(step, key, extraProps, isWaiting);
+        if (Array.isArray(rendered)) target.push(...rendered);
+        else target.push(rendered);
       };
       const kids = [];
       if (goal) {
@@ -3055,8 +3448,7 @@ function FileTypeIcon(props) {
           )
         );
       }
-      const todos = Array.isArray(summary.todos) ? summary.todos : null;
-      if (todos && todos.length > 0) {
+      if (hasTodos) {
         const total = todos.length;
         const done = todos.filter((item) => item.status === "completed").length;
         kids.push(
@@ -3070,8 +3462,9 @@ function FileTypeIcon(props) {
         todos.forEach((todo, index) => {
           const status = TODO_KEYS[todo.status] ? todo.status : "pending";
           const flash = promptFlash !== null && isRecord(promptFlash) && promptFlash.index === index ? promptFlash.state : null;
-          const title =
-            flash === "inserted"
+          const title = !todoPromptOn
+            ? todo.content
+            : flash === "inserted"
               ? t("progress.todoInserted")
               : flash === "copied"
                 ? t("progress.todoCopied")
@@ -3087,9 +3480,9 @@ function FileTypeIcon(props) {
                 "data-status": status,
                 "data-flash": flash === "inserted" || flash === "copied" ? "ok" : flash === "failed" ? "err" : undefined,
                 role: "button",
-                tabIndex: 0,
+                tabIndex: todoPromptOn ? 0 : undefined,
                 title,
-                onClick: () => onTodoClick(index, todo.content),
+                onDoubleClick: () => onTodoClick(index, todo.content),
                 onKeyDown: (event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
@@ -3103,12 +3496,14 @@ function FileTypeIcon(props) {
             )
           );
         });
-      } else if (steps.length > 0) {
+      }
+      if (hasTeam && !showSteps) pushFlatTeam(kids);
+      if (showSteps) {
         const markWaiting = waiting === true && summary.scope === "latest";
         let waitingIndex = -1;
         if (markWaiting) {
-          for (let index = steps.length - 1; index >= 0; index -= 1) {
-            if (steps[index].done !== true && steps[index].error !== true) {
+          for (let index = displaySteps.length - 1; index >= 0; index -= 1) {
+            if (displaySteps[index].done !== true && displaySteps[index].error !== true) {
               waitingIndex = index;
               break;
             }
@@ -3116,25 +3511,48 @@ function FileTypeIcon(props) {
         }
         const rows = [];
         let freshCount = 0;
-        steps.forEach((step, index) => {
+        displaySteps.forEach((step, index) => {
           const key = stepKeyOf(step, index);
           const fresh = !seenSteps.current.keys.has(key);
           if (fresh) {
             seenSteps.current.keys.add(key);
             freshCount += 1;
           }
-          rows.push(stepRow(step, key, fresh ? { "data-enter": "true", style: { animationDelay: `${(freshCount - 1) * 45}ms` } } : undefined, index === waitingIndex));
+          pushStepRow(rows, step, key, fresh ? { "data-enter": "true", style: { animationDelay: `${(freshCount - 1) * 45}ms` } } : undefined, index === waitingIndex);
         });
-        if (ghost !== null && isRecord(ghost)) {
-          rows.push(stepRow(ghost, `ghost-${ghost.callId}`, { "data-exit": "true" }, false));
+        if (ghost !== null && isRecord(ghost) && !stepsOpen) {
+          pushStepRow(rows, ghost, `ghost-${ghost.callId}`, { "data-exit": "true" }, false);
         }
-        kids.push(h("div", { className: "dsov-stepsHead", key: "stepsHead" }, t("progress.recentSteps")));
+        if (hasTeam) pushFlatTeam(rows);
+        kids.push(
+          h(
+            "div",
+            { className: "dsov-stepsHead", key: "stepsHead" },
+            h("span", null, t(stepsOpen ? "progress.allSteps" : "progress.recentSteps")),
+            canExpand
+              ? h(
+                  "button",
+                  {
+                    type: "button",
+                    className: "dsov-moreSteps",
+                    title: stepsOpen ? t("progress.hideEarlierSteps") : t("progress.moreStepsCount", { n: expandedSteps.length - steps.length }),
+                    onClick: () => setStepsExpanded(!stepsOpen),
+                  },
+                  t(stepsOpen ? "progress.hideEarlierSteps" : "progress.showEarlierSteps"),
+                  h(IconHistory, { size: 12, className: "dsov-moreIcon" })
+                )
+              : null
+          )
+        );
         kids.push(h("div", { className: "dsov-steps", key: "steps" }, rows));
       }
       return h(Section, { id: "progress", icon: h(IconProgress, { size: 15 }), title: t("section.progress"), empty: t(summary.scope === "all" ? "progress.empty" : "progress.emptyTurn") }, kids);
     }
 
     function ArtifactsSection({ summary, t, binding, stats }) {
+      const cfg = useConfig();
+      const fmtTime = (ts) => formatTime(ts, cfg.timeMode, summary.turnStart);
+      const timeTitle = (ts) => (cfg.timeMode === "elapsed" ? formatTime(ts) : undefined);
       const sessionId = binding ? binding.sessionId : undefined;
       const cwd = sessionCwd(sessionId);
       const turns = summary.changeTurns;
@@ -3173,7 +3591,7 @@ function FileTypeIcon(props) {
               ? h("span", { className: "dsov-badge", "data-tone": "quiet" }, t("artifact.binary"))
               : null,
           artifact.presented ? h("span", { className: "dsov-badge", "data-tone": "brand" }, t("artifact.presented")) : null,
-          h("span", { className: "dsov-rowTail" }, h("span", { className: "dsov-time" }, formatTime(artifact.time)))
+          h("span", { className: "dsov-rowTail" }, h("span", { className: "dsov-time", title: timeTitle(artifact.time) }, fmtTime(artifact.time)))
         );
       });
       return h(
@@ -3290,6 +3708,8 @@ function FileTypeIcon(props) {
 
     function ReferencesSection({ summary, t, sessionId }) {
       const cfg = useConfig();
+      const fmtTime = (ts) => formatTime(ts, cfg.timeMode, summary.turnStart);
+      const timeTitle = (ts) => (cfg.timeMode === "elapsed" ? formatTime(ts) : undefined);
       const sortMode = useRefSort();
       const hideCommon = useHideCommonRefs();
       const typeFilter = useRefTypes();
@@ -3386,7 +3806,7 @@ function FileTypeIcon(props) {
                 )
               : null
           ),
-          h("span", { className: "dsov-time", key: "time" }, formatTime(ref.time)),
+          h("span", { className: "dsov-time", key: "time", title: timeTitle(ref.time) }, fmtTime(ref.time)),
         ];
         const isFile = ref.kind === "file";
         if (isFile) {
@@ -3504,8 +3924,8 @@ function FileTypeIcon(props) {
                           key: mode,
                           className: "dsov-segBtn",
                           "data-active": sortMode === mode ? "true" : "false",
-                          title: t(`reference.sort.${mode}.title`),
-                          onClick: () => setRefSort(mode),
+                          title: sortMode === mode ? `${t(`reference.sort.${mode}.title`)} · ${t("reference.sort.cancel")}` : t(`reference.sort.${mode}.title`),
+                          onClick: () => setRefSort(sortMode === mode ? "" : mode),
                         },
                         t(`reference.sort.${mode}`)
                       )
@@ -3571,6 +3991,7 @@ function FileTypeIcon(props) {
       const cfg = useConfig();
       const sessionId = binding ? binding.sessionId : undefined;
       const rootClass = variant === "panel" ? "dsov-panel" : "dsov-view";
+      const rootRef = React.useRef(null);
       const scope = summary.scope === selection || selection === "latest" ? summary.scope : selection;
       const hasTurns = Array.isArray(summary.turns) && summary.turns.length >= 2;
       const turnOptions = Array.isArray(summary.turns) ? summary.turns.slice().reverse() : [];
@@ -3591,33 +4012,92 @@ function FileTypeIcon(props) {
             h("option", { value: "all", key: "all" }, t("scope.all"))
           )
         : null;
-      const statsBar = h(StatsBar, { stats: summary.stats, t });
-      const hasStats = isRecord(summary.stats) && (summary.stats.durationMs > 0 || summary.stats.toolCalls > 0);
+      const statsBar = cfg.showStats !== false ? h(StatsBar, { stats: summary.stats, t }) : null;
+      const hasStats = cfg.showStats !== false && isRecord(summary.stats) && (summary.stats.durationMs > 0 || summary.stats.toolCalls > 0);
+      const barPresent = variant === "panel" ? scopeSelect !== null || hasStats : !(scopeSelect === null && cfg.placement === "conversation" && !hasStats);
+      /* toggle data-stuck on the sticky wrapper: background only shows while pinned */
+      React.useEffect(() => {
+        const root = rootRef.current;
+        if (root === null || typeof window === "undefined" || typeof getComputedStyle !== "function") return undefined;
+        const wrapper = root.querySelector('[data-sticky-bar="true"]');
+        if (wrapper === null) return undefined;
+        let scroller = root;
+        while (scroller !== null && scroller !== document.body && scroller !== document.documentElement) {
+          const oy = getComputedStyle(scroller).overflowY;
+          if (oy === "auto" || oy === "scroll" || oy === "overlay") break;
+          /* an overflow:hidden ancestor only counts when it actually scrolls; otherwise the
+             search continues to the real scroller (the conversation tab has hidden wrappers) */
+          if (oy === "hidden" && scroller.scrollHeight > scroller.clientHeight + 1) break;
+          scroller = scroller.parentElement;
+        }
+        const target = scroller !== null && scroller !== document.body && scroller !== document.documentElement ? scroller : null;
+        /* Transform-based pinning: CSS sticky binds to the nearest scrollport, which an
+           overflow:hidden wrapper can hijack, leaving the bar to slide under the tab bar. */
+        let lastDelta = 0;
+        const update = () => {
+          const frameTop = target === null ? 0 : target.getBoundingClientRect().top;
+          const scrolled = target === null ? window.scrollY : target.scrollTop;
+          const natural = wrapper.getBoundingClientRect().top - lastDelta - frameTop + scrolled;
+          const delta = Math.max(0, scrolled - natural);
+          if (delta !== lastDelta) {
+            wrapper.style.transform = delta > 0 ? `translateY(${delta}px)` : "";
+            lastDelta = delta;
+          }
+          const flag = delta > 0.5 ? "true" : "false";
+          if (wrapper.getAttribute("data-stuck") !== flag) wrapper.setAttribute("data-stuck", flag);
+        };
+        update();
+        const host = target === null ? window : target;
+        host.addEventListener("scroll", update, { passive: true });
+        window.addEventListener("resize", update);
+        return () => {
+          host.removeEventListener("scroll", update);
+          window.removeEventListener("resize", update);
+          wrapper.style.transform = "";
+        };
+      }, [variant, barPresent]);
       return h(
         "div",
-        { className: rootClass, "data-conversation-overview": variant === "panel" ? "panel" : "view" },
+        { className: rootClass, ref: rootRef, "data-conversation-overview": variant === "panel" ? "panel" : "view" },
         variant === "panel"
           ? scopeSelect !== null || hasStats
-            ? h("div", { className: "dsov-turnbar" }, statsBar, scopeSelect)
+            ? h(
+                "div",
+                { className: "dsov-turnbarWrap", "data-sticky-bar": "true", "data-stuck": "false" },
+                h(
+                  "div",
+                  { className: "dsov-turnbar" },
+                  statsBar !== null ? h("div", { className: "dsov-turnbarScroll" }, statsBar) : null,
+                  scopeSelect !== null ? h("div", { className: "dsov-turnbarFixed" }, scopeSelect) : null
+                )
+              )
             : null
           : scopeSelect === null && cfg.placement === "conversation" && !hasStats
             ? null
             : h(
                 "div",
-                { className: "dsov-toolbar" },
-                statsBar,
-                scopeSelect,
-                cfg.placement === "conversation"
-                  ? null
-                  : h(
-                      "button",
-                      { type: "button", className: "dsov-iconBtn", onClick: openOverviewTab, title: t("action.openInSidebar") },
-                      h(IconOpenSidebar, { size: 14 }),
-                      t("action.openInSidebar")
-                    )
+                { className: "dsov-toolbarWrap", "data-sticky-bar": "true", "data-stuck": "false" },
+                h(
+                  "div",
+                  { className: "dsov-toolbar" },
+                  statsBar !== null ? h("div", { className: "dsov-toolbarScroll" }, statsBar) : null,
+                  h(
+                    "div",
+                    { className: "dsov-toolbarFixed" },
+                    scopeSelect,
+                    cfg.placement === "conversation"
+                      ? null
+                      : h(
+                          "button",
+                          { type: "button", className: "dsov-iconBtn", onClick: openOverviewTab, title: t("action.openInSidebar") },
+                          h(IconOpenSidebar, { size: 14 }),
+                          t("action.openInSidebar")
+                        )
+                  )
+                )
               ),
         summary.hasMore ? h("div", { className: "dsov-loading" }, t("state.loadingHistory")) : null,
-        cfg.showProgress ? h(ProgressSection, { summary, goal, t, waiting: sessionWaiting }) : null,
+        cfg.showProgress ? h(ProgressSection, { summary, goal, t, waiting: sessionWaiting, cfg }) : null,
         cfg.showArtifacts ? h(ArtifactsSection, { summary, t, binding, stats }) : null,
         cfg.showReferences ? h(ReferencesSection, { summary, t, sessionId }) : null
       );
@@ -3803,7 +4283,8 @@ function FileTypeIcon(props) {
     const FRONTMATTER_TITLE_KEYS = ["title", "name"];
     const FRONTMATTER_TAG_KEYS = ["keywords", "tags"];
     const FRONTMATTER_SCENARIO_KEYS = ["usage_scenario", "when_to_use"];
-    const FRONTMATTER_SKIP_KEYS = new Set([...FRONTMATTER_TITLE_KEYS, ...FRONTMATTER_TAG_KEYS, ...FRONTMATTER_SCENARIO_KEYS, "description"]);
+    const FRONTMATTER_SOURCE_KEYS = ["source", "sources"];
+    const FRONTMATTER_SKIP_KEYS = new Set([...FRONTMATTER_TITLE_KEYS, ...FRONTMATTER_TAG_KEYS, ...FRONTMATTER_SCENARIO_KEYS, ...FRONTMATTER_SOURCE_KEYS, "description"]);
 
     function frontmatterTitle(fields) {
       for (const key of FRONTMATTER_TITLE_KEYS) {
@@ -3821,6 +4302,26 @@ function FileTypeIcon(props) {
       const description = fields.find((field) => field.key === "description");
       if (description && description.value !== "") {
         blocks.push(h("p", { className: "dsov-vikingDesc", key: "description" }, description.value));
+      }
+      const sourceField = fields.find((field) => FRONTMATTER_SOURCE_KEYS.indexOf(field.key) !== -1 && (field.value !== "" || field.items.length > 0));
+      if (sourceField) {
+        const values = sourceField.items.length > 0 ? sourceField.items : [sourceField.value];
+        blocks.push(
+          h(
+            "div",
+            { className: "dsov-vikingField", key: "source" },
+            h("div", { className: "dsov-vikingFieldLabel" }, t("viking.field.source")),
+            h(
+              "div",
+              { className: "dsov-vikingSource" },
+              values.map((value, index) =>
+                /^https?:\/\//i.test(value)
+                  ? h("a", { key: `${value}#${index}`, className: "dsov-vikingSourceLink", href: value, target: "_blank", rel: "noreferrer" }, value)
+                  : h("span", { key: `${value}#${index}`, className: "dsov-vikingFieldValue" }, value)
+              )
+            )
+          )
+        );
       }
       const scenarios = fields.filter((field) => FRONTMATTER_SCENARIO_KEYS.indexOf(field.key) !== -1 && field.items.length > 0);
       if (scenarios.length > 0) {
@@ -4042,6 +4543,41 @@ function FileTypeIcon(props) {
       );
     }
 
+    /* Multi-line text row committing on blur and on unmount (prompt template). */
+    function SettingTextarea({ label, value, placeholder, onCommit }) {
+      const [draft, setDraft] = React.useState(value);
+      const [focused, setFocused] = React.useState(false);
+      const pending = React.useRef({ draft: value, value, commit: onCommit });
+      pending.current = { draft, value, commit: onCommit };
+      React.useEffect(
+        () => () => {
+          const state = pending.current;
+          if (typeof state.draft === "string" && state.draft !== state.value) state.commit(state.draft);
+        },
+        []
+      );
+      return h(
+        "div",
+        { className: "dsov-set-row dsov-set-arearow" },
+        h("span", { className: "dsov-set-label" }, label),
+        h("textarea", {
+          className: "dsov-set-textarea",
+          rows: 7,
+          value: focused === true ? draft : value,
+          placeholder,
+          onFocus: () => {
+            setDraft(value);
+            setFocused(true);
+          },
+          onBlur: () => {
+            setFocused(false);
+            if (typeof draft === "string" && draft !== value) onCommit(draft);
+          },
+          onChange: (event) => setDraft(event.target.value),
+        })
+      );
+    }
+
     function SettingsForm(props) {
       const t = typeof props.t === "function" ? props.t : translate;
       const hookForm = useSettingsForm();
@@ -4070,6 +4606,10 @@ function FileTypeIcon(props) {
         { id: "sidebar", label: t("settings.placement.sidebar") },
         { id: "both", label: t("settings.placement.both") },
       ];
+      const timeOptions = [
+        { id: "clock", label: t("settings.timeMode.clock") },
+        { id: "elapsed", label: t("settings.timeMode.elapsed") },
+      ];
       const boolRow = (label, field) =>
         h(SettingSelect, {
           label,
@@ -4089,7 +4629,23 @@ function FileTypeIcon(props) {
           t("settings.sections"),
           boolRow(t("settings.showProgress"), "showProgress"),
           boolRow(t("settings.showArtifacts"), "showArtifacts"),
-          boolRow(t("settings.showReferences"), "showReferences")
+          boolRow(t("settings.showReferences"), "showReferences"),
+          boolRow(t("settings.showStats"), "showStats")
+        ),
+        group(
+          t("settings.interaction"),
+          h(SettingSelect, { label: t("settings.timeMode"), value: cfg.timeMode, options: timeOptions, onPick: (id) => set("timeMode", id) }),
+          boolRow(t("settings.todoPromptRow"), "todoPrompt"),
+          cfg.todoPrompt
+            ? h(SettingTextarea, {
+                label: t("settings.todoPromptTemplate"),
+                value: cfg.todoPromptTemplate,
+                placeholder: DEFAULT_TODO_TEMPLATE,
+                onCommit: (value) => set("todoPromptTemplate", value),
+              })
+            : null,
+          note(t("settings.todoPromptNote")),
+          cfg.todoPrompt ? note(t("settings.todoPromptTemplateNote")) : null
         ),
         group(
           t("settings.quickNav"),
@@ -4123,6 +4679,19 @@ function FileTypeIcon(props) {
             : null,
           note(cfg.vikingPreview ? t("settings.vikingNote") : t("settings.vikingOffNote"))
         ),
+        group(
+          t("settings.feedbackGroup"),
+          h(
+            "a",
+            { className: "dsov-set-link", href: FEEDBACK_URL, target: "_blank", rel: "noreferrer", title: FEEDBACK_URL },
+            h("span", null, t("settings.feedback")),
+            h(
+              "svg",
+              { width: 11, height: 11, viewBox: "0 0 12 12", fill: "none", "aria-hidden": "true" },
+              h("path", { d: "M4.6 2.4H2.8c-.7 0-1.3.6-1.3 1.3v5.5c0 .7.6 1.3 1.3 1.3h5.5c.7 0 1.3-.6 1.3-1.3V7.4M7.2 1.5h3.3v3.3M6.3 5.7 10.2 1.8", stroke: "currentColor", strokeWidth: 1.1, strokeLinecap: "round", strokeLinejoin: "round" })
+            )
+          )
+        ),
         formUsable ? note(t("settings.hint")) : null
       );
     }
@@ -4134,8 +4703,15 @@ function FileTypeIcon(props) {
     const CSS = `
 .dsov-view{box-sizing:border-box;width:100%;max-width:880px;margin:0 auto;padding:20px 28px 64px;display:flex;flex-direction:column;gap:14px}
 .dsov-panel{box-sizing:border-box;height:100%;min-height:0;overflow-y:auto;padding:14px 16px 28px;display:flex;flex-direction:column;gap:12px}
-.dsov-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:8px}
-.dsov-iconBtn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:8px;border:.5px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer}
+.dsov-panel,.dsov-viking,.dsov-secBody,.dsov-typeMenu,.dsov-md-pre,.dsov-turnbarScroll,.dsov-toolbarScroll{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--dsw-alias-label-secondary) 35%,transparent) transparent}
+.dsov-panel::-webkit-scrollbar,.dsov-viking::-webkit-scrollbar,.dsov-secBody::-webkit-scrollbar,.dsov-typeMenu::-webkit-scrollbar,.dsov-md-pre::-webkit-scrollbar,.dsov-turnbarScroll::-webkit-scrollbar,.dsov-toolbarScroll::-webkit-scrollbar{width:6px;height:5px}
+.dsov-panel::-webkit-scrollbar-thumb,.dsov-viking::-webkit-scrollbar-thumb,.dsov-secBody::-webkit-scrollbar-thumb,.dsov-typeMenu::-webkit-scrollbar-thumb,.dsov-md-pre::-webkit-scrollbar-thumb,.dsov-turnbarScroll::-webkit-scrollbar-thumb,.dsov-toolbarScroll::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--dsw-alias-label-secondary) 35%,transparent);border-radius:3px}
+.dsov-panel::-webkit-scrollbar-track,.dsov-viking::-webkit-scrollbar-track,.dsov-secBody::-webkit-scrollbar-track,.dsov-typeMenu::-webkit-scrollbar-track,.dsov-md-pre::-webkit-scrollbar-track,.dsov-turnbarScroll::-webkit-scrollbar-track,.dsov-toolbarScroll::-webkit-scrollbar-track{background:transparent}
+.dsov-toolbar{display:flex;align-items:center;gap:8px}
+.dsov-toolbarScroll{flex:1 1 auto;min-width:0;display:flex;align-items:center;overflow-x:auto;overflow-y:hidden;padding-bottom:5px}
+.dsov-toolbarFixed{flex:none;display:flex;align-items:center;gap:8px;margin-left:auto;padding-bottom:5px}
+.dsov-iconBtn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:8px;border:.5px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap;flex:none}
+.dsov-turnSelect{flex:none}
 .dsov-iconBtn:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,transparent);color:var(--dsw-alias-label-primary)}
 .dsov-section{background:var(--dsw-alias-bg-layer-1);border:.5px solid var(--dsw-alias-border-l1);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .dsov-sectionHead{display:flex;align-items:center;gap:6px}
@@ -4143,6 +4719,9 @@ function FileTypeIcon(props) {
 .dsov-sectionToggle:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent)}
 .dsov-chevron{flex:none;display:inline-flex;color:var(--dsw-alias-label-secondary);transition:transform .15s ease}
 .dsov-chevron[data-open=true]{transform:rotate(90deg)}
+.dsov-moreSteps{appearance:none;background:transparent;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:auto;padding:1px 6px;border-radius:8px;font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.dsov-moreSteps:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dsov-moreIcon{flex:none;display:inline-flex;opacity:.75}
 .dsov-sectionIcon{flex:none;display:inline-flex;color:var(--dsw-alias-label-secondary)}
 .dsov-sectionTitle{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);white-space:nowrap}
 .dsov-count{flex:none;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border-radius:999px;padding:0 8px;font-variant-numeric:tabular-nums}
@@ -4178,7 +4757,7 @@ function FileTypeIcon(props) {
 .dsov-todoText{flex:1;min-width:0;overflow-wrap:anywhere}
 .dsov-todo[data-status=completed] .dsov-todoText{color:var(--dsw-alias-label-secondary)}
 .dsov-todoStatus{flex:none;font-size:11px;line-height:20px;color:var(--dsw-alias-label-secondary)}
-.dsov-stepsHead{font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));letter-spacing:.02em;padding:1px 2px 4px}
+.dsov-stepsHead{display:flex;align-items:center;gap:8px;font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));letter-spacing:.02em;padding:1px 2px 4px}
 .dsov-steps{position:relative;display:flex;flex-direction:column;gap:3px}
 .dsov-step{display:flex;align-items:center;gap:6px;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-primary);padding:3px 6px;min-width:0;border-radius:8px;cursor:pointer;transition:background-color .18s ease}
 .dsov-step:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 5%,transparent)}
@@ -4192,6 +4771,18 @@ function FileTypeIcon(props) {
 .dsov-step[data-waiting=true]{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff9f0a) 9%,transparent)}
 .dsov-step[data-waiting=true] .dsov-stepName{color:var(--dsw-alias-state-warn-primary,#ff9f0a)}
 .dsov-step[data-waiting=true] .dsov-todoIcon[data-status=waiting]{color:var(--dsw-alias-state-warn-primary,#ff9f0a)}
+.dsov-agentIcon{color:var(--dsw-alias-brand-primary)}
+.dsov-memberName{flex:none;font-weight:500}
+.dsov-memberDesc{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--dsw-alias-label-secondary)}
+.dsov-todo .dsov-chevron{margin-top:4px}
+.dsov-todoIcon[data-status=failed]{color:var(--dsw-alias-state-error-primary)}
+.dsov-taskSubject{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsov-todo[data-depth="1"]{position:relative;margin-left:26px}
+.dsov-todo[data-depth="2"]{position:relative;margin-left:46px}
+.dsov-todo[data-depth]::before{content:"";position:absolute;left:-15px;top:-4px;bottom:50%;width:9px;border-left:1px solid var(--dsw-alias-border-l2);border-bottom:1px solid var(--dsw-alias-border-l2);border-bottom-left-radius:6px}
+.dsov-member[data-expandable=false]{cursor:default}
+.dsov-member[data-expandable=false]:hover{background:transparent}
+.dsov-stepChevron{flex:none;margin-right:-2px}
 .dsov-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:6px 8px;margin:0 -8px;border-radius:10px;border:none;background:transparent;cursor:pointer;font:inherit;color:inherit;box-sizing:content-box}
 .dsov-row:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent)}
 .dsov-rowStatic{cursor:default}
@@ -4214,13 +4805,15 @@ function FileTypeIcon(props) {
 .dsov-settingsPage{display:flex;flex-direction:column;gap:14px;padding:6px 2px;max-width:560px}
 .dsov-settingsHeading{font-size:16px;font-weight:600;color:var(--dsw-alias-label-primary);margin:0}
 .dsov-set-prefs{padding:4px 0}
-.dsov-set-group{border-top:.5px solid var(--dsw-alias-border-l2);margin-top:18px;padding-top:16px}
+.dsov-set-group{border-top:.5px solid var(--dsw-alias-border-l2);margin-top:20px;padding-top:16px}
 .dsov-set-group:first-child{border-top:none;margin-top:0;padding-top:0}
-.dsov-set-group-title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:20px;margin-bottom:8px}
-.dsov-set-row{align-items:center;gap:8px;padding:7px 0;display:flex}
-.dsov-set-label{min-width:0;color:var(--dsw-alias-label-primary);flex:1;font-size:14px;font-weight:400}
+.dsov-set-link{display:inline-flex;align-items:center;gap:6px;padding:6px 0;font-size:13px;line-height:20px;color:var(--dsw-alias-brand-primary);text-decoration:none;width:fit-content}
+.dsov-set-link:hover{text-decoration:underline}
+.dsov-set-group-title{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:18px;letter-spacing:.02em;margin-bottom:10px}
+.dsov-set-row{align-items:center;gap:10px;padding:8px 0;display:flex}
+.dsov-set-label{min-width:0;color:var(--dsw-alias-label-primary);flex:1;font-size:13px;font-weight:400;line-height:20px}
 .dsov-set-control{position:relative;flex:none;display:inline-flex}
-.dsov-set-select{background:var(--dsw-alias-bg-module-platform,var(--dsw-alias-bg-layer-2));height:36px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;transition:background-color var(--ds-transition-duration,.2s) var(--ds-ease-in-out,ease-in-out);border:none;border-radius:18px;align-items:center;gap:12px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}
+.dsov-set-select{background:var(--dsw-alias-bg-module-platform,var(--dsw-alias-bg-layer-2));height:32px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;transition:background-color var(--ds-transition-duration,.2s) var(--ds-ease-in-out,ease-in-out);border:none;border-radius:16px;align-items:center;gap:10px;padding:0 12px;font-size:13px;line-height:20px;display:inline-flex}
 .dsov-set-select:hover{background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,var(--dsw-alias-label-primary) 8%,transparent))}
 .dsov-set-selectLabel{max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dsov-set-caret{flex:none;display:inline-flex;color:var(--dsw-alias-label-secondary);transform:rotate(90deg);transition:transform .15s ease}
@@ -4229,11 +4822,16 @@ function FileTypeIcon(props) {
 .dsov-set-menuItem{display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;border:none;border-radius:7px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;text-align:left;cursor:pointer}
 .dsov-set-menuItem:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,transparent)}
 .dsov-set-menuItem[data-selected=true]{color:var(--dsw-alias-brand-primary);font-weight:500}
-.dsov-set-note{color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));margin:2px 0 0;font-size:12px;line-height:1.6}
-.dsov-set-note+.dsov-set-note{margin-top:6px}
+.dsov-set-note{color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));margin:4px 0 0;font-size:12px;line-height:1.55}
+.dsov-set-note+.dsov-set-note{margin-top:2px}
 .dsov-set-textrow{flex-direction:column;align-items:stretch;gap:6px}
 .dsov-set-input{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l4,var(--dsw-alias-border-l2));border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-bg-layer-3,var(--dsw-alias-bg-layer-2));width:100%;color:var(--dsw-alias-label-primary);font:inherit;padding:6px 12px;font-size:13px;line-height:1.5}
 .dsov-set-input:focus{outline:none;border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 55%,transparent)}
+.dsov-set-arearow{display:block}
+.dsov-set-arearow .dsov-set-label{display:block;margin-bottom:6px}
+.dsov-set-textarea{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l4,var(--dsw-alias-border-l2));border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-bg-layer-3,var(--dsw-alias-bg-layer-2));width:100%;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:1.55;padding:8px 12px;resize:vertical}
+.dsov-set-textarea:focus{outline:none;border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 55%,transparent)}
+.dsov-set-textarea::placeholder{color:var(--dsw-alias-label-quaternary,var(--dsw-alias-label-secondary));opacity:.75}
 html[data-dsov-quicknav="on"] nav:has(button[data-index][aria-label]),html[data-dsov-quicknav="on"] nav[class*="_frame"]{display:block!important}
 html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data-dsov-quicknav="off"] nav[class*="_frame"]{display:none!important}
 .dsov-viking{box-sizing:border-box;height:100%;min-height:0;overflow-y:auto;padding:14px 16px 28px;display:flex;flex-direction:column;gap:10px}
@@ -4267,8 +4865,14 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 .dsov-filterBtn{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border:.5px solid var(--dsw-alias-border-l2);border-radius:10px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:10.5px;line-height:1;cursor:pointer;white-space:nowrap}
 .dsov-filterBtn:hover{color:var(--dsw-alias-label-primary);background:color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent)}
 .dsov-filterBtn[data-active=true]{color:var(--dsw-alias-brand-primary);border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 45%,transparent);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 8%,transparent)}
-.dsov-turnbar{display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:0 0 2px}
-.dsov-stats{display:flex;align-items:center;gap:5px;margin-right:auto;min-width:0;overflow:hidden}
+.dsov-turnbar{display:flex;justify-content:flex-start;align-items:center;gap:8px;padding:0}
+.dsov-turnbarScroll{flex:1 1 auto;min-width:0;display:flex;align-items:center;overflow-x:auto;overflow-y:hidden;padding-bottom:5px}
+.dsov-turnbarFixed{flex:none;display:flex;align-items:center;margin-left:auto;padding-bottom:5px}
+.dsov-panel .dsov-turnbarWrap{position:relative;z-index:5;margin:-14px -16px 0;padding:8px 16px 3px;background:transparent;transition:background-color .18s ease,box-shadow .18s ease}
+.dsov-panel .dsov-turnbarWrap[data-stuck=true]{background:var(--dsw-specific-sidebar-fill,var(--dsw-alias-bg-base));box-shadow:0 6px 10px -8px color-mix(in srgb,var(--dsw-alias-label-primary) 25%,transparent)}
+.dsov-view .dsov-toolbarWrap{position:relative;z-index:4;margin:-20px -28px 0;padding:10px 28px 5px;background:transparent;transition:background-color .18s ease,box-shadow .18s ease}
+.dsov-view .dsov-toolbarWrap[data-stuck=true]{background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1));backdrop-filter:var(--dsw-menu-backdrop-filter,none);box-shadow:0 6px 10px -8px color-mix(in srgb,var(--dsw-alias-label-primary) 22%,transparent)}
+.dsov-stats{display:flex;align-items:center;gap:5px;margin-right:auto;flex:none}
 .dsov-stat{flex:none;font-size:10.5px;line-height:18px;padding:0 8px;border-radius:999px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);white-space:nowrap;font-variant-numeric:tabular-nums}
 .dsov-stat[data-tone=err]{color:var(--dsw-alias-state-error-primary,#ff453a);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#ff453a) 10%,transparent)}
 .dsov-turnSelect{flex:none;max-width:150px;height:24px;padding:0 22px 0 9px;border:.5px solid var(--dsw-alias-border-l2);border-radius:12px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 12px) 10px,calc(100% - 8px) 10px;background-size:4px 4px,4px 4px;background-repeat:no-repeat}
@@ -4287,6 +4891,12 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 .dsov-segBtn{border:none;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;line-height:18px;padding:0 8px;border-radius:6px;cursor:pointer;white-space:nowrap}
 .dsov-segBtn:hover{color:var(--dsw-alias-label-primary)}
 .dsov-segBtn[data-active=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-weight:500;box-shadow:0 0 0 .5px var(--dsw-alias-border-l1)}
+.dsov-refControls .dsov-seg{display:inline-flex;align-items:stretch;gap:0;padding:0;border:.5px solid var(--dsw-alias-border-l2);border-radius:10px;background:transparent;overflow:hidden}
+.dsov-refControls .dsov-segBtn{height:19px;align-self:center;line-height:1;padding:0 9px;border:none;border-radius:0;background:transparent;color:var(--dsw-alias-label-secondary);font-size:10.5px}
+.dsov-refControls .dsov-segBtn+.dsov-segBtn{border-left:.5px solid var(--dsw-alias-border-l2)}
+.dsov-refControls .dsov-segBtn:hover{color:var(--dsw-alias-label-primary);background:color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent)}
+.dsov-refControls .dsov-segBtn[data-active=true]{color:var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 8%,transparent);font-weight:500;box-shadow:none}
+.dsov-refControls .dsov-segBtn[data-active=true]:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 12%,transparent)}
 .dsov-vikingList{display:flex;flex-direction:column}
 .dsov-vikingSize{font-size:11px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}
 .dsov-vikingSource{white-space:pre-wrap;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l1);border-radius:8px;padding:10px 12px;margin:0}
@@ -4298,6 +4908,9 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 .dsov-vikingTags{display:flex;flex-wrap:wrap;gap:5px}
 .dsov-tag{font-size:11px;line-height:19px;padding:0 8px;border-radius:999px;color:var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 10%,transparent);border:.5px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 30%,transparent)}
 .dsov-vikingFieldValue{font-size:12.5px;line-height:1.6;color:var(--dsw-alias-label-primary);overflow-wrap:anywhere}
+.dsov-vikingSource{display:flex;flex-direction:column;gap:2px}
+.dsov-vikingSourceLink{font-size:12.5px;line-height:1.6;color:var(--dsw-alias-brand-primary);text-decoration:none;overflow-wrap:anywhere}
+.dsov-vikingSourceLink:hover{text-decoration:underline}
 .dsov-vikingError{display:flex;flex-direction:column;align-items:flex-start;gap:8px;font-size:13px;color:var(--dsw-alias-state-error-primary)}
 .dsov-vikingErrorDetail{font-size:12px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}
 .dsov-md{font-size:13.5px;line-height:1.65;color:var(--dsw-alias-label-primary);display:flex;flex-direction:column;gap:2px}
@@ -4698,6 +5311,7 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
       refDisplayType,
       stepDetail,
       stepFull,
+      teamStepKey,
       formatDuration,
       rerunPrompt,
       insertIntoComposer,

@@ -11,8 +11,12 @@ const Config = z.object({
   showProgress: z.boolean().default(true),
   showArtifacts: z.boolean().default(true),
   showReferences: z.boolean().default(true),
+  showStats: z.boolean().default(true),
+  timeMode: z.union([z.const("clock"), z.const("elapsed")]).default("clock"),
   placement: z.union([z.const("conversation"), z.const("sidebar"), z.const("both")]).default("both"),
   sectionFullHeight: z.boolean().default(false),
+  todoPrompt: z.boolean().default(true),
+  todoPromptTemplate: z.string().default(""),
   quickNav: z.boolean().default(true),
   quickNavLink: z.boolean().default(true),
   vikingPreview: z.boolean().default(true),
@@ -268,4 +272,4 @@ export const inject = ["connection"];
 export { Config, apply };
 
 /** Test-only surface: disk mapping and discovery without the desktop spawn. */
-export const _internal = { vikingStorageRoot, resolveVikingTarget, skillRoots, isSafeSegment, REVEAL_PATH };
+export const _internal = { vikingStorageRoot, resolveVikingTarget, skillRoots, isSafeSegment, REVEAL_PATH, Config };

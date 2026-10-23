@@ -234,8 +234,12 @@ assert.deepEqual(T.normalizeConfig(undefined), {
   showProgress: true,
   showArtifacts: true,
   showReferences: true,
+  showStats: true,
+  timeMode: "clock",
   placement: "both",
   sectionFullHeight: false,
+  todoPrompt: true,
+  todoPromptTemplate: "",
   quickNav: true,
   quickNavLink: true,
   vikingPreview: true,
@@ -247,6 +251,12 @@ assert.equal(T.normalizeConfig({ showProgress: false, placement: "sidebar", quic
 assert.equal(T.normalizeConfig({ vikingPreview: false }).vikingPreview, false);
 assert.equal(T.normalizeConfig({ sectionFullHeight: true }).sectionFullHeight, true);
 assert.equal(T.normalizeConfig({ sectionFullHeight: "yes" }).sectionFullHeight, false);
+assert.equal(T.normalizeConfig({ todoPrompt: false }).todoPrompt, false);
+assert.equal(T.normalizeConfig({ showStats: false }).showStats, false);
+assert.equal(T.normalizeConfig({ timeMode: "elapsed" }).timeMode, "elapsed");
+assert.equal(T.normalizeConfig({ timeMode: "bogus" }).timeMode, "clock");
+assert.equal(T.normalizeConfig({ todoPromptTemplate: "重跑 {index}: {content}\n保留换行" }).todoPromptTemplate, "重跑 {index}: {content}\n保留换行");
+assert.equal(T.normalizeConfig({ todoPromptTemplate: 42 }).todoPromptTemplate, "");
 assert.equal(T.normalizeConfig({ vikingUrl: "http://x:1/" }).vikingUrl, "http://x:1");
 assert.equal(T.normalizeConfig({ vikingAccount: "  " }).vikingAccount, "");
 assert.deepEqual(T.normalizeConfig({ placement: "nope", showArtifacts: "x", showReferences: null }).placement, "both");
@@ -301,18 +311,23 @@ const formProps = {
 };
 const pageForm = renderForm(formHost, formProps);
 const selects = selectButtons(pageForm);
-assert.equal(selects.length, 8, "section selects + full height + quick nav + link + placement + viking preview");
+assert.equal(selects.length, 11, "sections + stats + time mode + todo prompt + quick nav + link + placement + full height + viking preview");
 assert.equal(selectLabel(selects[0]), "settings.off", "showProgress=false reflected");
 assert.equal(selectLabel(selects[1]), "settings.on", "showArtifacts=true reflected");
-assert.equal(selectLabel(selects[3]), "settings.on", "quickNav defaults on");
-assert.equal(selectLabel(selects[4]), "settings.on", "quickNavLink defaults on");
-assert.equal(selectLabel(selects[5]), "settings.placement.sidebar", "placement=sidebar reflected");
-assert.equal(selectLabel(selects[6]), "settings.off", "sectionFullHeight defaults off, grouped with placement");
+assert.equal(selectLabel(selects[3]), "settings.on", "showStats defaults on");
+assert.equal(selectLabel(selects[4]), "settings.timeMode.clock", "timeMode defaults to clock time");
+assert.equal(selectLabel(selects[5]), "settings.on", "todoPrompt defaults on");
+assert.equal(selectLabel(selects[6]), "settings.on", "quickNav defaults on");
+assert.equal(selectLabel(selects[7]), "settings.on", "quickNavLink defaults on");
+assert.equal(selectLabel(selects[8]), "settings.placement.sidebar", "placement=sidebar reflected");
+assert.equal(selectLabel(selects[9]), "settings.off", "sectionFullHeight defaults off, grouped with placement");
+const areas = collect(pageForm, (n) => n.type === "textarea" && n.props && n.props.className === "dsov-set-textarea");
+assert.equal(areas.length, 1, "prompt template textarea visible while todoPrompt is on");
 const formInputs = textInputs(pageForm);
 assert.equal(formInputs.length, 3, "viking url/account/user inputs");
 assert.deepEqual(formInputs.map((i) => i.props.value), ["http://127.0.0.1:1933", "", ""]);
 /* open the placement menu and pick an option */
-selects[5].props.onClick();
+selects[8].props.onClick();
 const opened = renderForm(formHost, formProps);
 const items = menuItems(opened);
 assert.ok(items.length >= 3, "placement menu rendered");
@@ -348,39 +363,55 @@ assert.equal(textInputs(editing)[2].props.value, "alice", "draft shown while foc
 textInputs(editing)[2].props.onBlur();
 assert.deepEqual(mutations.at(-1), { ops: [{ op: "set", path: ["vikingUser"], value: "alice" }], revision: 7 }, "blur commits the text field");
 
+/* prompt template textarea commits on blur */
+resetHooks();
+const areaForm = renderForm(formHost, formProps);
+const area1 = collect(areaForm, (n) => n.type === "textarea" && n.props && n.props.className === "dsov-set-textarea")[0];
+area1.props.onFocus();
+area1.props.onChange({ target: { value: "重跑 {index}: {content}" } });
+const areaEditing = renderForm(formHost, formProps);
+collect(areaEditing, (n) => n.type === "textarea")[0].props.onBlur();
+assert.deepEqual(mutations.at(-1), { ops: [{ op: "set", path: ["todoPromptTemplate"], value: "重跑 {index}: {content}" }], revision: 7 }, "blur commits the template");
+
+/* todoPrompt off hides the textarea */
+resetHooks();
+const promptOffProps = { ...formProps, form: { ...formProps.form, state: { ...formProps.form.state, value: { ...formProps.form.state.value, todoPrompt: false } } } };
+const promptOffForm = renderForm(formHost, promptOffProps);
+assert.equal(collect(promptOffForm, (n) => n.type === "textarea").length, 0, "template editor hidden while todoPrompt is off");
+
 /* scenario G: SettingsForm overlay path without a host form */
 const localHost = materialize(undefined);
 const localProps = { view: "page", t: keyT };
 resetHooks(true);
 const localForm = renderForm(localHost, localProps);
 const localSelects = selectButtons(localForm);
-assert.equal(localSelects.length, 8, "fallback form renders all controls");
-assert.equal(selectLabel(localSelects[5]), "settings.placement.both", "default placement shown");
-localSelects[3].props.onClick();
+assert.equal(localSelects.length, 11, "fallback form renders all controls");
+assert.equal(selectLabel(localSelects[8]), "settings.placement.both", "default placement shown");
+localSelects[6].props.onClick();
 const localOpened = renderForm(localHost, localProps);
 menuItems(localOpened).find((n) => n.children[0] === "settings.off").props.onClick();
 const afterOverlay = renderForm(localHost, localProps);
-assert.equal(selectLabel(selectButtons(afterOverlay)[3]), "settings.off", "overlay edit reflected on rerender");
+assert.equal(selectLabel(selectButtons(afterOverlay)[6]), "settings.off", "overlay edit reflected on rerender");
 /* placement through the overlay too */
-selectButtons(afterOverlay)[5].props.onClick();
+selectButtons(afterOverlay)[8].props.onClick();
 const localOpened2 = renderForm(localHost, localProps);
 menuItems(localOpened2).find((n) => n.children[0] === "settings.placement.sidebar").props.onClick();
 const afterOverlay2 = renderForm(localHost, localProps);
-assert.equal(selectLabel(selectButtons(afterOverlay2)[5]), "settings.placement.sidebar", "overlay placement edit persisted");
+assert.equal(selectLabel(selectButtons(afterOverlay2)[8]), "settings.placement.sidebar", "overlay placement edit persisted");
 assert.ok(localHost.disposals.includes("conversation.view"), "overlay placement change disposed the conversation view");
 
 /* viking preview toggle gates the text rows */
-assert.equal(selectLabel(selectButtons(afterOverlay2)[7]), "settings.on", "vikingPreview defaults on");
+assert.equal(selectLabel(selectButtons(afterOverlay2)[10]), "settings.on", "vikingPreview defaults on");
 assert.equal(textInputs(afterOverlay2).length, 3, "viking text rows visible while enabled");
-selectButtons(afterOverlay2)[7].props.onClick();
+selectButtons(afterOverlay2)[10].props.onClick();
 const vikingOpened = renderForm(localHost, localProps);
 menuItems(vikingOpened).find((n) => n.children[0] === "settings.off").props.onClick();
 const vikingOff = renderForm(localHost, localProps);
-assert.equal(selectLabel(selectButtons(vikingOff)[7]), "settings.off", "vikingPreview toggled off");
+assert.equal(selectLabel(selectButtons(vikingOff)[10]), "settings.off", "vikingPreview toggled off");
 assert.equal(textInputs(vikingOff).length, 0, "viking text rows hidden while disabled");
 const offNote = collect(vikingOff, (n) => n.type === "div" && n.props && n.props.className === "dsov-set-note" && n.children[0] === "settings.vikingOffNote");
 assert.ok(offNote.length > 0, "off note rendered");
-selectButtons(vikingOff)[7].props.onClick();
+selectButtons(vikingOff)[10].props.onClick();
 menuItems(renderForm(localHost, localProps)).find((n) => n.children[0] === "settings.on").props.onClick();
 assert.equal(textInputs(renderForm(localHost, localProps)).length, 3, "text rows return after re-enabling");
 
@@ -388,7 +419,7 @@ assert.equal(textInputs(renderForm(localHost, localProps)).length, 3, "text rows
 resetHooks(true);
 const page = expand(localHost.instance._test.SettingsSection());
 assert.ok(page && page.props.className === "dsov-settingsPage", "settings section page renders");
-assert.ok(selectButtons(page).length === 8, "settings page embeds the form");
+assert.ok(selectButtons(page).length === 11, "settings page embeds the form");
 
 /* ---- 3. fold real session events ---------------------------------------- */
 function loadEvents(file) {
@@ -603,7 +634,7 @@ const refs = [
   { kind: "file", label: "f", count: 2, time: 20, seq: 2 },
 ];
 assert.deepEqual(T.sortReferences(refs, "time").map((r) => r.label), ["c", "m", "f"], "time mode keeps incoming order");
-assert.deepEqual(T.sortReferences(refs, "kind").map((r) => r.label), ["m", "f", "c"], "kind mode groups memory-file before file before context");
+assert.deepEqual(T.sortReferences(refs, "kind").map((r) => r.label), ["c", "m", "f"], "removed kind mode falls back to the incoming order");
 assert.deepEqual(T.sortReferences(refs, "count").map((r) => r.label), ["c", "f", "m"], "count mode ranks by count desc");
 assert.equal(T.getRefSort(), "time", "default sort mode");
 T.setRefSort("count");
@@ -612,6 +643,16 @@ T.setRefSort("bogus");
 assert.equal(T.getRefSort(), "count", "invalid mode ignored");
 T.setRefSort("time");
 assert.equal(T.getRefSort(), "time");
+T.setRefSort("kind");
+assert.equal(T.getRefSort(), "time", "kind sort mode was removed and is rejected");
+T.setRefSort("count");
+T.setRefSort("");
+assert.equal(T.getRefSort(), "", "empty string clears the sort");
+assert.deepEqual(T.sortReferences(refs, "").map((r) => r.label), ["c", "m", "f"], "cleared sort keeps incoming order");
+T.setRefSort("");
+assert.equal(T.getRefSort(), "", "clearing twice is a no-op");
+T.setRefSort("time");
+assert.equal(T.getRefSort(), "time", "sort re-arms after clearing");
 
 /* ---- 8. per-turn folding + context previews ------------------------------ */
 {
@@ -748,6 +789,7 @@ assert.equal(T.getRefSort(), "time");
   const latest = T.buildState(folder, win, 0, "latest");
   assert.equal(latest.todos, null, "no plan in this turn");
   assert.equal(latest.steps.length, 3, "all three tool calls recorded");
+  assert.equal(latest.stepsAll.length, 3, "full retained window mirrors the small turn");
   /* chronological: oldest on top, newest at the bottom */
   assert.equal(latest.steps[0].name, "read");
   assert.equal(latest.steps[0].done, true);
@@ -799,6 +841,12 @@ assert.equal(T.getRefSort(), "time");
   assert.ok(prompt.endsWith("**请直接执行，不要只提供方案。**"), "template tail");
   assert.equal(prompt.split("\n").length, 13, "13 template lines");
   for (const n of [1, 2, 3, 4, 5, 6]) assert.ok(prompt.includes(`\n${n}. `), `requirement line ${n}`);
+  assert.equal(T.rerunPrompt(2, "写文档", "重跑第 {index} 步：{content}（{index}）"), "重跑第 2 步：写文档（2）", "custom template placeholders substituted");
+  assert.ok(T.rerunPrompt(1, "x", "   ").startsWith("请查看当前任务的完整 TODO 计划"), "blank template falls back to the default");
+  assert.equal(T.teamStepKey("spawn_teammate", { name: "a", description: "d" }), "a", "spawn key is the teammate name");
+  assert.equal(T.teamStepKey("team_task_create", { subject: "s" }), "s", "task key is the subject");
+  assert.equal(T.teamStepKey("subagent_fork", { description: "d", prompt: "p" }), "d", "subagent key is the description");
+  assert.equal(T.teamStepKey("bash", { command: "ls" }), undefined, "other tools carry no team key");
   assert.equal(T.insertIntoComposer("x"), "failed", "without composer or clipboard the helper reports failure");
 
   /* reference type filter store + display grouping */
@@ -815,6 +863,54 @@ assert.equal(T.getRefSort(), "time");
   const guardText = '[OpenViking memory plugin] URI guard: this shell command contains the viking:// URI viking://user/c/plan.md。还有.\nExample: mcp__openviking__read(uris="viking://user/c/plan.md。还有")';
   assert.deepEqual(T.contextDetail({ kind: "plugin:openviking-memory" }, [{ type: "text", text: guardText }]), [], "guard message yields no references");
   assert.deepEqual(T.extractVikingUris('Example: read(uris="viking://user/c/plan.md。还有")'), ["viking://user/c/plan.md"], "quoted capture trims at CJK punctuation");
+}
+
+/* scenario 11: agent-team folding (members, shared board tasks, subagents) */
+{
+  const ev = (type, data, seq, time) => ({ type, data, seq, time });
+  const W = "/w";
+  const win = { hasMore: false, entries: [] };
+  const folder = T.createFolder();
+  folder.sessionId = "s-team";
+  T.foldEvent(folder, ev("turn/start", { turn: 1 }, 1, 100), W);
+  T.foldEvent(folder, ev("tool/call", { callId: "c-spawn", name: "spawn_teammate", arguments: JSON.stringify({ name: "verifier", description: "验证者", prompt: "p" }) }, 9, 99), W);
+  T.foldEvent(folder, ev("team/task", { teamId: "t", task: { id: "task-1", revision: 1, subject: "验证", description: "desc", status: "pending", blockedBy: [], writeScopes: ["a.mjs"] } }, 2, 101), W);
+  T.foldEvent(folder, ev("team/member", { teamId: "t", member: { id: "m1", name: "verifier", description: "验证者", provider: "spawn", context: "fresh", phase: "provisioning" } }, 3, 102), W);
+  T.foldEvent(folder, ev("team/member", { teamId: "t", member: { id: "m1", name: "verifier", description: "验证者", provider: "spawn", context: "fresh", phase: "active" } }, 4, 103), W);
+  T.foldEvent(folder, ev("team/task", { teamId: "t", task: { id: "task-1", revision: 2, subject: "验证", description: "desc", status: "in_progress", ownerId: "m1", blockedBy: [], writeScopes: ["a.mjs"] } }, 5, 104), W);
+  T.foldEvent(folder, ev("subagent/catalog", { childId: "m1", label: "验证者", mode: "continuable" }, 6, 105), W);
+  T.foldEvent(folder, ev("subagent/catalog", { childId: "x9", label: "研究子代理", mode: "continuable" }, 7, 106), W);
+  const latest = T.buildState(folder, win, 0, "latest");
+  assert.equal(latest.team.members.length, 1, "member upserted once");
+  const spawnStep = latest.steps.find((step) => step.name === "spawn_teammate");
+  assert.ok(spawnStep !== undefined, "spawn step recorded");
+  assert.equal(spawnStep.teamKey, "verifier", "spawn step carries the teammate name for nesting");
+  /* anchor pinning: later filler calls must not evict the spawn anchor from the view */
+  for (let i = 0; i < 7; i += 1) {
+    T.foldEvent(folder, ev("tool/call", { callId: `c-fill-${i}`, name: "bash", arguments: JSON.stringify({ command: `echo ${i}` }) }, 20 + i, 200 + i), W);
+    T.foldEvent(folder, ev("tool/result", { callId: `c-fill-${i}`, result: "ok", isError: false }, 40 + i, 201 + i), W);
+  }
+  const pinned = T.buildState(folder, win, 0, "latest");
+  assert.equal(pinned.steps.length, 7, "six recent steps plus the pinned spawn anchor");
+  assert.equal(pinned.steps[0].name, "spawn_teammate", "anchor stays first, chronologically");
+  assert.equal(pinned.steps[0].teamKey, "verifier");
+  assert.equal(pinned.stepsAll.length, 8, "full window keeps spawn plus all seven fillers under the raised cap");
+  assert.equal(pinned.stepsAll[0].name, "spawn_teammate", "window order stays chronological");
+  assert.equal(latest.team.members[0].phase, "active", "latest phase wins");
+  assert.equal(latest.team.members[0].firstTime, 102, "first observation time kept");
+  assert.equal(latest.team.tasks.length, 1);
+  assert.equal(latest.team.tasks[0].status, "in_progress", "latest revision wins");
+  assert.equal(latest.team.tasks[0].ownerId, "m1");
+  assert.equal(latest.team.tasks[0].revision, 2);
+  assert.deepEqual(latest.team.subagents.map((sub) => sub.childId), ["x9"], "team members are filtered out of the subagent list");
+  /* turn isolation: turn 2 has no team activity */
+  T.foldEvent(folder, ev("turn/start", { turn: 2 }, 8, 200), W);
+  const l2 = T.buildState(folder, win, 0, "latest");
+  assert.deepEqual(l2.team, { members: [], tasks: [], subagents: [] }, "turn 2 sees no team records");
+  const all = T.buildState(folder, win, 0, "all");
+  assert.equal(all.team.tasks.length, 1, "folder level keeps the task");
+  const empty = T.buildState(T.createFolder(), win, 0, "latest");
+  assert.deepEqual(empty.team, { members: [], tasks: [], subagents: [] }, "empty state team shape");
 }
 
 console.log("\nALL TESTS PASSED");
