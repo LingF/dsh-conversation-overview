@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Conversation Overview",
+    "title": "Conversation Overview (dsh-conversation-overview)",
     "description": "Adds an Overview tab beside Chat/Trajectory and a matching right-sidebar page: session progress (goal and todos), artifacts (produced/delivered files), and references (context, memories, skills, files). Section visibility and placement are configurable in Settings."
   }
 }

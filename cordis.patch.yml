@@ -9,6 +9,7 @@
         showReferences: true
         showStats: true
         timeMode: clock
+        stepAnchors: false
         placement: both
         sectionFullHeight: false
         todoPrompt: true

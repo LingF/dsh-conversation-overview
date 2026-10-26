@@ -13,17 +13,19 @@ DeepSeek Harness（DSH）插件：在对话/轨迹旁增加「概览」标签页
   - 目标（goal）与阶段徽标；任务计划（todos）进度条与逐条状态；
   - 无任务计划的轮次显示「本轮关键步骤」：最近 6 次工具调用，时间正序（旧上新下），新步骤底部渐入、旧步骤顶部浅出，可一键展开本轮全部步骤；
   - 等待人为确认（权限审批/提问/计划确认）的步骤以琥珀色确认风格高亮；
+  - 可开启「里程碑步骤置顶」：上下文压缩、用户审批与失败的工具调用固定在关键步骤顶部，不被最近窗口挤出；
   - 团队会话显示各成员阶段（创建中/运行中/空闲/失败/阻塞），可展开团队详情；
   - 点击步骤行复制其完整目标文本（命令/文件路径/查询等），悬停查看全文；
   - 双击 todo 行把「重新执行指定步骤」的提示词填入聊天输入框（不自动发送），提示词模板可自定义（支持 `{index}`、`{content}` 占位符）。
-- **产物**：产出/交付文件列表、按轮次分组的变更审阅入口、Finder/系统定位。
+- **产物**：产出/交付文件列表、按轮次分组的变更审阅入口、Finder/系统定位；右键菜单支持「打开方式」选择应用与系统定位。
 - **引用**：上下文注入、OpenViking 记忆（`viking://`）、技能目录、文件与会话引用；
   - 类型多选下拉筛选（选中类型以 chips 显示）、「过滤常见」隐藏每轮都出现的注入、排序（最新/类型/次数，可点击取消）；
   - `viking://` 记忆在右侧边栏新标签页内预览（frontmatter 结构化 + Markdown 渲染 + 预览/源码切换，经 OpenViking HTTP API）；
   - 运行时上下文注入可点击打开快照预览标签页；文件路径点击定位。
 - **范围选择器**：最新一轮 / 第 N 轮 / 全部轮次；轮次统计胶囊（用时、工具调用、命令、修改文件、失败数），可整体开关，时间支持「时间点 / 本轮计时」两种显示。
+- **时间轴**：点击用时胶囊打开时间轴，按任意时间点回看当时的进展/产物/引用；支持「回到最新」、在时间轴保持打开时切换轮次。
 - **快速导航联动**：可强制显示内置轮次导航轨（含窄容器下），轨道刻度带轮次号提示，点击刻度联动概览切换到对应轮次。
-- **设置页**：DSH 设置中的独立分区 + 插件行内配置，全部选项即时生效；内置「问题反馈」入口直达 GitHub Issues。
+- **设置页**：DSH 设置中的独立分区 + 插件行内配置，全部选项即时生效；内置「问题反馈」入口直达 GitHub Issues；显示当前版本并自动检查 GitHub 最新 Release，有新版时出现「新版本」徽标，点击直达 Releases。
 
 ## 安装
 
@@ -50,6 +52,7 @@ dsh-conversation-overview
 | `showReferences` | `true` | 显示「引用」分区 |
 | `showStats` | `true` | 显示轮次统计胶囊（用时、工具调用等） |
 | `timeMode` | `clock` | 时间显示：`clock` 时间点 / `elapsed` 本轮计时（从 0s 起） |
+| `stepAnchors` | `false` | 里程碑步骤置顶：上下文压缩/用户审批/失败调用固定在关键步骤顶部 |
 | `placement` | `both` | 显示位置：`conversation` 对话页 / `sidebar` 侧边栏 / `both` |
 | `sectionFullHeight` | `false` | 分区完整展示（关闭时限高 320px、内部滚动） |
 | `todoPrompt` | `true` | 双击待办行生成重执行提示词并填入输入框 |
@@ -60,6 +63,12 @@ dsh-conversation-overview
 | `vikingUrl` | `http://127.0.0.1:1933` | OpenViking HTTP API 地址 |
 | `vikingAccount` | `""` | OpenViking 账户（预览记忆必填） |
 | `vikingUser` | `""` | OpenViking 用户（预览记忆必填） |
+
+## 版本更新
+
+**升级已安装的插件**：在 DSH「插件管理」中先移除 `dsh-conversation-overview`，再安装最新版（或在会话中让 Agent 依次执行 `remove_bundle` → `install_bundle dsh-conversation-overview@latest`），完成后刷新浏览器页面；若新版本增加了配置字段或宿主端代码有改动，需重启一次 DSH。
+
+**维护者发布**：将开发目录的改动同步到本目录并做发布转换（包名 id、OpenViking 账户/用户默认值置空）→ 跑离线测试套件与 `npm pack --dry-run` 核对文件清单 → `npm version patch|minor|major`（自动生成 git 提交与标签）→ `npm publish --registry https://registry.npmjs.org/`（本机默认 registry 是镜像，必须显式指定官方源）→ `git push origin main --tags`。
 
 ## 开发与测试
 

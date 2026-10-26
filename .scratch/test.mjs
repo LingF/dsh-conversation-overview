@@ -236,6 +236,7 @@ assert.deepEqual(T.normalizeConfig(undefined), {
   showReferences: true,
   showStats: true,
   timeMode: "clock",
+  stepAnchors: false,
   placement: "both",
   sectionFullHeight: false,
   todoPrompt: true,
@@ -255,6 +256,11 @@ assert.equal(T.normalizeConfig({ todoPrompt: false }).todoPrompt, false);
 assert.equal(T.normalizeConfig({ showStats: false }).showStats, false);
 assert.equal(T.normalizeConfig({ timeMode: "elapsed" }).timeMode, "elapsed");
 assert.equal(T.normalizeConfig({ timeMode: "bogus" }).timeMode, "clock");
+assert.equal(T.normalizeConfig({ stepAnchors: true }).stepAnchors, true, "stepAnchors opt-in");
+assert.ok(T.compareVersions("v1.2.0", "1.1.0") > 0, "newer release detected");
+assert.equal(T.compareVersions("1.1.0", "v1.1.0"), 0, "same version equal");
+assert.ok(T.compareVersions("1.0.9", "1.1.0") < 0, "older release not flagged");
+assert.equal(T.normalizeConfig({}).stepAnchors, false, "stepAnchors defaults off");
 assert.equal(T.normalizeConfig({ todoPromptTemplate: "重跑 {index}: {content}\n保留换行" }).todoPromptTemplate, "重跑 {index}: {content}\n保留换行");
 assert.equal(T.normalizeConfig({ todoPromptTemplate: 42 }).todoPromptTemplate, "");
 assert.equal(T.normalizeConfig({ vikingUrl: "http://x:1/" }).vikingUrl, "http://x:1");
@@ -311,23 +317,24 @@ const formProps = {
 };
 const pageForm = renderForm(formHost, formProps);
 const selects = selectButtons(pageForm);
-assert.equal(selects.length, 11, "sections + stats + time mode + todo prompt + quick nav + link + placement + full height + viking preview");
+assert.equal(selects.length, 12, "sections + stats + time mode + milestone pin + todo prompt + quick nav + link + placement + full height + viking preview");
 assert.equal(selectLabel(selects[0]), "settings.off", "showProgress=false reflected");
 assert.equal(selectLabel(selects[1]), "settings.on", "showArtifacts=true reflected");
 assert.equal(selectLabel(selects[3]), "settings.on", "showStats defaults on");
 assert.equal(selectLabel(selects[4]), "settings.timeMode.clock", "timeMode defaults to clock time");
-assert.equal(selectLabel(selects[5]), "settings.on", "todoPrompt defaults on");
-assert.equal(selectLabel(selects[6]), "settings.on", "quickNav defaults on");
-assert.equal(selectLabel(selects[7]), "settings.on", "quickNavLink defaults on");
-assert.equal(selectLabel(selects[8]), "settings.placement.sidebar", "placement=sidebar reflected");
-assert.equal(selectLabel(selects[9]), "settings.off", "sectionFullHeight defaults off, grouped with placement");
+assert.equal(selectLabel(selects[5]), "settings.off", "stepAnchors defaults off");
+assert.equal(selectLabel(selects[6]), "settings.on", "todoPrompt defaults on");
+assert.equal(selectLabel(selects[7]), "settings.on", "quickNav defaults on");
+assert.equal(selectLabel(selects[8]), "settings.on", "quickNavLink defaults on");
+assert.equal(selectLabel(selects[9]), "settings.placement.sidebar", "placement=sidebar reflected");
+assert.equal(selectLabel(selects[10]), "settings.off", "sectionFullHeight defaults off, grouped with placement");
 const areas = collect(pageForm, (n) => n.type === "textarea" && n.props && n.props.className === "dsov-set-textarea");
 assert.equal(areas.length, 1, "prompt template textarea visible while todoPrompt is on");
 const formInputs = textInputs(pageForm);
 assert.equal(formInputs.length, 3, "viking url/account/user inputs");
 assert.deepEqual(formInputs.map((i) => i.props.value), ["http://127.0.0.1:1933", "", ""]);
 /* open the placement menu and pick an option */
-selects[8].props.onClick();
+selects[9].props.onClick();
 const opened = renderForm(formHost, formProps);
 const items = menuItems(opened);
 assert.ok(items.length >= 3, "placement menu rendered");
@@ -385,33 +392,33 @@ const localProps = { view: "page", t: keyT };
 resetHooks(true);
 const localForm = renderForm(localHost, localProps);
 const localSelects = selectButtons(localForm);
-assert.equal(localSelects.length, 11, "fallback form renders all controls");
-assert.equal(selectLabel(localSelects[8]), "settings.placement.both", "default placement shown");
-localSelects[6].props.onClick();
+assert.equal(localSelects.length, 12, "fallback form renders all controls");
+assert.equal(selectLabel(localSelects[9]), "settings.placement.both", "default placement shown");
+localSelects[7].props.onClick();
 const localOpened = renderForm(localHost, localProps);
 menuItems(localOpened).find((n) => n.children[0] === "settings.off").props.onClick();
 const afterOverlay = renderForm(localHost, localProps);
-assert.equal(selectLabel(selectButtons(afterOverlay)[6]), "settings.off", "overlay edit reflected on rerender");
+assert.equal(selectLabel(selectButtons(afterOverlay)[7]), "settings.off", "overlay edit reflected on rerender");
 /* placement through the overlay too */
-selectButtons(afterOverlay)[8].props.onClick();
+selectButtons(afterOverlay)[9].props.onClick();
 const localOpened2 = renderForm(localHost, localProps);
 menuItems(localOpened2).find((n) => n.children[0] === "settings.placement.sidebar").props.onClick();
 const afterOverlay2 = renderForm(localHost, localProps);
-assert.equal(selectLabel(selectButtons(afterOverlay2)[8]), "settings.placement.sidebar", "overlay placement edit persisted");
+assert.equal(selectLabel(selectButtons(afterOverlay2)[9]), "settings.placement.sidebar", "overlay placement edit persisted");
 assert.ok(localHost.disposals.includes("conversation.view"), "overlay placement change disposed the conversation view");
 
 /* viking preview toggle gates the text rows */
-assert.equal(selectLabel(selectButtons(afterOverlay2)[10]), "settings.on", "vikingPreview defaults on");
+assert.equal(selectLabel(selectButtons(afterOverlay2)[11]), "settings.on", "vikingPreview defaults on");
 assert.equal(textInputs(afterOverlay2).length, 3, "viking text rows visible while enabled");
-selectButtons(afterOverlay2)[10].props.onClick();
+selectButtons(afterOverlay2)[11].props.onClick();
 const vikingOpened = renderForm(localHost, localProps);
 menuItems(vikingOpened).find((n) => n.children[0] === "settings.off").props.onClick();
 const vikingOff = renderForm(localHost, localProps);
-assert.equal(selectLabel(selectButtons(vikingOff)[10]), "settings.off", "vikingPreview toggled off");
+assert.equal(selectLabel(selectButtons(vikingOff)[11]), "settings.off", "vikingPreview toggled off");
 assert.equal(textInputs(vikingOff).length, 0, "viking text rows hidden while disabled");
 const offNote = collect(vikingOff, (n) => n.type === "div" && n.props && n.props.className === "dsov-set-note" && n.children[0] === "settings.vikingOffNote");
 assert.ok(offNote.length > 0, "off note rendered");
-selectButtons(vikingOff)[10].props.onClick();
+selectButtons(vikingOff)[11].props.onClick();
 menuItems(renderForm(localHost, localProps)).find((n) => n.children[0] === "settings.on").props.onClick();
 assert.equal(textInputs(renderForm(localHost, localProps)).length, 3, "text rows return after re-enabling");
 
@@ -419,7 +426,7 @@ assert.equal(textInputs(renderForm(localHost, localProps)).length, 3, "text rows
 resetHooks(true);
 const page = expand(localHost.instance._test.SettingsSection());
 assert.ok(page && page.props.className === "dsov-settingsPage", "settings section page renders");
-assert.ok(selectButtons(page).length === 11, "settings page embeds the form");
+assert.ok(selectButtons(page).length === 12, "settings page embeds the form");
 
 /* ---- 3. fold real session events ---------------------------------------- */
 function loadEvents(file) {
@@ -847,6 +854,106 @@ assert.equal(T.getRefSort(), "time", "sort re-arms after clearing");
   assert.equal(T.teamStepKey("team_task_create", { subject: "s" }), "s", "task key is the subject");
   assert.equal(T.teamStepKey("subagent_fork", { description: "d", prompt: "p" }), "d", "subagent key is the description");
   assert.equal(T.teamStepKey("bash", { command: "ls" }), undefined, "other tools carry no team key");
+
+  /* approval asked/decided fold into a milestone step; turnEnd/todoHistory back the timeline */
+  {
+    const f = T.createFolder();
+    f.sessionId = "s";
+    T.foldEntry(f, { type: "durable", event: { type: "turn/start", seq: 1, time: 1000, data: { turn: 1 } } }, "/w");
+    T.foldEntry(f, { type: "durable", event: { type: "approval/asked", seq: 2, time: 1100, data: { id: "ap1", toolName: "plugin_manager", reason: "escalate" } } }, "/w");
+    let st = T.buildState(f, { hasMore: false, entries: [] }, 0, "latest");
+    let ap = st.stepsAll.find((s) => s.name === "approval");
+    assert.ok(ap, "approval asked folds into a step");
+    assert.equal(ap.done, false, "pending until decided");
+    assert.equal(ap.detail, "plugin_manager");
+    T.foldEntry(f, { type: "durable", event: { type: "approval/decided", seq: 3, time: 1200, data: { id: "ap1", outcome: "allowed-once" } } }, "/w");
+    st = T.buildState(f, { hasMore: false, entries: [] }, 0, "latest");
+    ap = st.stepsAll.find((s) => s.name === "approval");
+    assert.equal(ap.done, true, "decided marks the step done");
+    assert.equal(ap.detail, "plugin_manager · allowed-once", "outcome appended");
+    assert.notEqual(ap.error, true, "allowed is not an error");
+    T.foldEntry(f, { type: "durable", event: { type: "approval/asked", seq: 4, time: 1300, data: { id: "ap2", toolName: "bash", reason: "rm" } } }, "/w");
+    T.foldEntry(f, { type: "durable", event: { type: "approval/decided", seq: 5, time: 1400, data: { id: "ap2", outcome: "denied" } } }, "/w");
+    st = T.buildState(f, { hasMore: false, entries: [] }, 0, "latest");
+    const denied = st.stepsAll.find((s) => s.callId === "approval-ap2");
+    assert.equal(denied.error, true, "denied approval flags error");
+    assert.equal(st.turnEnd, 1400, "turnEnd exposed for the timeline");
+    assert.ok(Array.isArray(st.todoHistory), "todoHistory exposed for scrubbing");
+  }
+
+  /* viking ref naming: skills by folder name, dirs vs files distinguished */
+  assert.equal(T.vikingLabel("viking://agent/skills/xunshan-api-migration/SKILL.md"), "xunshan-api-migration", "SKILL.md reads as the skill name");
+  assert.equal(T.vikingLabel("viking://user/alice/memories/entities/软件/会议助手.md"), "会议助手", "memory files keep their own name");
+  assert.equal(T.vikingRefKind("viking://agent/skills/foo/SKILL.md"), "skill", "SKILL.md folds as a skill ref");
+  assert.equal(T.vikingRefKind("viking://agent/skills/foo"), "skill", "skill folder folds as a skill ref");
+  assert.equal(T.vikingRefKind("viking://user/alice/memories/x.md"), "memory-file", "memory paths stay memory-file");
+  assert.equal(T.vikingIsDir("viking://resources/projects/demo/"), true, "trailing slash is a dir");
+  assert.equal(T.vikingIsDir("viking://resources/projects/demo"), true, "extensionless leaf is a dir");
+  assert.equal(T.vikingIsDir("viking://resources/projects/demo.md"), false, "dotted leaf is a file");
+
+  /* compact-checkpoint folds into an anchored key step, not a context reference */
+  {
+    const f = T.createFolder();
+    f.sessionId = "s";
+    T.foldEntry(f, { type: "durable", event: { type: "turn/start", seq: 1, time: 1000, data: { turn: 1 } } }, "/w");
+    T.foldEntry(
+      f,
+      {
+        type: "durable",
+        event: {
+          type: "user/message",
+          seq: 2,
+          time: 2000,
+          data: { source: { kind: "compact-checkpoint", compactionId: "abc" }, content: [{ type: "text", text: "x".repeat(4096) }] },
+          surfaceOp: { op: "replace", startSeq: 1, endSeq: 1 },
+        },
+      },
+      "/w"
+    );
+    let st = T.buildState(f, { hasMore: false, entries: [] }, 0, "latest");
+    const compact = st.stepsAll.find((step) => step.name === "compact-checkpoint");
+    assert.ok(compact, "compaction folded as a step");
+    assert.equal(compact.teamKey, "compact:abc", "anchored through a unique teamKey");
+    assert.equal(compact.done, true, "compaction step is instantly complete");
+    assert.equal(compact.detail, "≈4 KB", "detail reports the summary size");
+    /* push the compaction out of the recent window: without pinning it scrolls away */
+    for (let i = 0; i < 7; i += 1) {
+      T.foldEntry(f, { type: "durable", event: { type: "tool/call", seq: 10 + i * 2, time: 3000 + i, data: { callId: `x${i}`, name: "read", arguments: "{}" } } }, "/w");
+      T.foldEntry(f, { type: "durable", event: { type: "tool/result", seq: 11 + i * 2, time: 3001 + i, data: { message: { source: { callId: `x${i}` }, content: [] } } } }, "/w");
+    }
+    st = T.buildState(f, { hasMore: false, entries: [] }, 0, "latest");
+    assert.equal(st.steps.some((step) => step.name === "compact-checkpoint"), false, "milestone steps do not pin by default");
+    assert.ok(st.milestones.some((step) => step.name === "compact-checkpoint"), "milestone lane retains the compaction for optional pinning");
+    assert.equal(st.references.length, 0, "no duplicate context reference for the checkpoint");
+  }
+
+  /* planTodoAttachments: delegates nest under the todo they textually match */
+  {
+    const todos = [
+      { content: "Audit sanitization coverage", status: "in_progress" },
+      { content: "Write docs", status: "pending" },
+      { content: "Ship release", status: "pending" },
+    ];
+    const members = [{ id: "m1", name: "sanitization-auditor", description: "", phase: "active", time: 5 }];
+    const tasks = [
+      { id: "t1", subject: "Audit sanitization coverage", status: "in_progress", ownerId: "m1", time: 6 },
+      { id: "t2", subject: "Unrelated chore", status: "pending", time: 7 },
+    ];
+    const subs = [{ childId: "s1", label: "write docs helper", status: "", mode: "", time: 8 }];
+    const plan = T.planTodoAttachments(todos, members, tasks, subs);
+    assert.equal(plan.size, 2, "two todos gathered a delegate; the unmatched task stays flat");
+    const first = plan.get(0);
+    assert.equal(first.length, 1);
+    assert.equal(first[0].kind, "member", "member matched through its owned task subject");
+    assert.equal(first[0].owned.length, 1, "the owned task travels with the member");
+    assert.equal(first[0].owned[0].id, "t1");
+    const second = plan.get(1);
+    assert.equal(second.length, 1);
+    assert.equal(second[0].kind, "sub", "subagent matched by label containment");
+    assert.equal(second[0].record.childId, "s1");
+    assert.equal(plan.has(2), false, "todo without a delegate gets no attachment");
+    assert.deepEqual([...T.planTodoAttachments([], members, tasks, subs).keys()], [], "no todos, no attachments");
+  }
   assert.equal(T.insertIntoComposer("x"), "failed", "without composer or clipboard the helper reports failure");
 
   /* reference type filter store + display grouping */

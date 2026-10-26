@@ -19,9 +19,154 @@ window.__ModuleLoader__.load({
     const ROW_ID = "conversation-overview";
     const ROW_KEY = "dsh-conversation-overview#conversation-overview";
     const FEEDBACK_URL = "https://github.com/LingF/dsh-conversation-overview/issues";
+    const RELEASES_URL = "https://github.com/LingF/dsh-conversation-overview/releases";
+    const RELEASE_API_URL = "https://api.github.com/repos/LingF/dsh-conversation-overview/releases/latest";
+    const RELEASE_TAGS_API_URL = "https://api.github.com/repos/LingF/dsh-conversation-overview/tags?per_page=100";
+    const TAGS_URL = "https://github.com/LingF/dsh-conversation-overview/tags";
+    /* keep in sync with package.json */
+    const PLUGIN_VERSION = "1.1.0";
+    const LATEST_CACHE_KEY = "dsh.conversationOverview.latestRelease";
+    const LATEST_CACHE_TTL = 6 * 60 * 60 * 1000;
+    const latestStore = { tag: null, via: "release", loaded: false, inflight: null };
+
+    function compareVersions(left, right) {
+      const parse = (value) =>
+        String(value)
+          .replace(/^v/i, "")
+          .split("-")[0]
+          .split(".")
+          .map((part) => Number.parseInt(part, 10) || 0);
+      const a = parse(left);
+      const b = parse(right);
+      for (let index = 0; index < 3; index += 1) {
+        const delta = (a[index] || 0) - (b[index] || 0);
+        if (delta !== 0) return delta;
+      }
+      return 0;
+    }
+
+    function fetchLatestRelease() {
+      if (latestStore.loaded) return Promise.resolve(latestStore.tag);
+      if (latestStore.inflight !== null) return latestStore.inflight;
+      try {
+        const raw = localStorage.getItem(LATEST_CACHE_KEY);
+        if (typeof raw === "string") {
+          const parsed = JSON.parse(raw);
+          if (isRecord(parsed) && typeof parsed.tag === "string" && typeof parsed.time === "number" && Date.now() - parsed.time < LATEST_CACHE_TTL) {
+            latestStore.tag = parsed.tag;
+            latestStore.via = parsed.via === "tags" ? "tags" : "release";
+            latestStore.loaded = true;
+            return Promise.resolve(parsed.tag);
+          }
+        }
+      } catch {
+        /* cache is best-effort */
+      }
+      if (typeof fetch !== "function") return Promise.resolve(null);
+      latestStore.inflight = fetch(RELEASE_API_URL, { headers: { Accept: "application/vnd.github+json" } })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((payload) => {
+          /* repos without formal releases fall back to the highest version tag */
+          if (isRecord(payload) && typeof payload.tag_name === "string") return { tag: payload.tag_name, via: "release" };
+          return fetch(RELEASE_TAGS_API_URL, { headers: { Accept: "application/vnd.github+json" } })
+            .then((response) => (response.ok ? response.json() : []))
+            .then((list) => {
+              if (!Array.isArray(list)) return { tag: null, via: "release" };
+              let best = null;
+              for (const entry of list) {
+                const name = isRecord(entry) && typeof entry.name === "string" ? entry.name : null;
+                if (name !== null && (best === null || compareVersions(name, best) > 0)) best = name;
+              }
+              return { tag: best, via: "tags" };
+            });
+        })
+        .then((found) => {
+          latestStore.inflight = null;
+          latestStore.loaded = true;
+          latestStore.tag = found.tag;
+          latestStore.via = found.via;
+          if (found.tag !== null) {
+            try {
+              localStorage.setItem(LATEST_CACHE_KEY, JSON.stringify({ tag: found.tag, via: found.via, time: Date.now() }));
+            } catch {
+              /* storage is best-effort */
+            }
+          }
+          return found.tag;
+        })
+        .catch(() => {
+          latestStore.inflight = null;
+          return null;
+        });
+      return latestStore.inflight;
+    }
+
+    function useLatestVersion() {
+      const [tag, setTag] = React.useState(latestStore.tag);
+      React.useEffect(() => {
+        let cancelled = false;
+        Promise.resolve(fetchLatestRelease()).then((value) => {
+          if (!cancelled && typeof value === "string") setTag(value);
+        });
+        return () => {
+          cancelled = true;
+        };
+      }, []);
+      return typeof tag === "string" && compareVersions(tag, PLUGIN_VERSION) > 0 ? tag : null;
+    }
+
+    /* The plugin-manager renders every detail.badge entry on every page; only answer for ours. */
+    function isOverviewSubject(subject) {
+      if (!isRecord(subject)) return false;
+      if (subject.kind === "item") return typeof subject.id === "string" && subject.id.indexOf("conversation-overview") !== -1;
+      if (subject.kind === "row") {
+        const row = isRecord(subject.row) ? subject.row : null;
+        const pkg = isRecord(subject.pkg) ? subject.pkg : null;
+        return (row !== null && String(row.rowId ?? "").indexOf("conversation-overview") !== -1) || (pkg !== null && String(pkg.name ?? "").indexOf("conversation-overview") !== -1);
+      }
+      return false;
+    }
+
+    function NewVersionBadge({ subject }) {
+      const tag = useLatestVersion();
+      if (tag === null || !isOverviewSubject(subject)) return null;
+      return h(
+        "a",
+        {
+          className: "dsov-newVer",
+          href: latestStore.via === "tags" ? TAGS_URL : `${RELEASES_URL}/tag/${encodeURIComponent(tag)}`,
+          target: "_blank",
+          rel: "noreferrer",
+          title: translate("settings.latestTitle"),
+        },
+        `${translate("settings.latestBadge")} ${tag}`
+      );
+    }
+
+    function VersionRow({ t }) {
+      const tag = useLatestVersion();
+      return h(
+        "div",
+        { className: "dsov-set-ver" },
+        tag !== null
+          ? h(
+              "a",
+              {
+                className: "dsov-newVer",
+                href: latestStore.via === "tags" ? TAGS_URL : `${RELEASES_URL}/tag/${encodeURIComponent(tag)}`,
+                target: "_blank",
+                rel: "noreferrer",
+                title: t("settings.latestTitle"),
+              },
+              `${t("settings.latestBadge")} ${tag}`
+            )
+          : null,
+        h("span", null, `${t("settings.currentVersion")} v${PLUGIN_VERSION}`)
+      );
+    }
     const PLACEMENTS = ["conversation", "sidebar", "both"];
     const TIME_MODES = ["clock", "elapsed"];
-    const CONFIG_FIELDS = ["showProgress", "showArtifacts", "showReferences", "showStats", "timeMode", "placement", "sectionFullHeight", "todoPrompt", "todoPromptTemplate", "quickNav", "quickNavLink", "vikingPreview", "vikingUrl", "vikingAccount", "vikingUser"];
+    const CONFIG_FIELDS = ["showProgress", "showArtifacts", "showReferences", "showStats", "timeMode", "stepAnchors", "placement", "sectionFullHeight", "todoPrompt", "todoPromptTemplate", "quickNav", "quickNavLink", "vikingPreview", "vikingUrl", "vikingAccount", "vikingUser"];
     const VIKING_TAB_ID = "dsh-conversation-overview/viking";
     const VIKING_TAB_KIND = "viking-memory";
     const VIKING_ADDRESS_PREFIX = "dsh-resource://viking-memory/";
@@ -40,7 +185,7 @@ window.__ModuleLoader__.load({
     const zh = {
       "view.tab": "概览",
       "panel.title": "概览",
-      "guide.title": "概览",
+      "guide.title": "会话概览",
       "guide.description": "进展、产物与引用",
       "section.progress": "进展",
       "section.artifacts": "产物",
@@ -48,6 +193,8 @@ window.__ModuleLoader__.load({
       "progress.empty": "生成任务/待办后将在此展示进展",
       "progress.emptyTurn": "本轮未创建任务计划",
       "progress.recentSteps": "本轮关键步骤（最近 6 条）",
+      "step.compact": "上下文压缩",
+      "step.approval": "用户审批",
       "progress.allSteps": "本轮关键步骤（全部）",
       "progress.showEarlierSteps": "显示更早的步骤",
       "progress.moreStepsCount": "还有 {n} 条",
@@ -69,15 +216,21 @@ window.__ModuleLoader__.load({
       "artifacts.viewAll": "查看所有改动",
       "settings.summary": "控制概览的板块与显示位置",
       "settings.nav": "概览",
-      "settings.pageTitle": "会话概览",
+      "settings.pageTitle": "会话概览（dsh-conversation-overview）",
       "settings.sections": "板块显示",
       "settings.showProgress": "进展（任务与待办）",
       "settings.showArtifacts": "产物（本次对话产出）",
       "settings.showReferences": "引用（上下文、记忆等）",
       "settings.showStats": "统计（用时、执行次数等）",
       "settings.timeMode": "时间显示",
+      "settings.stepAnchors": "里程碑步骤置顶",
+      "settings.stepAnchorsNote": "开启后，上下文压缩、用户审批与失败的工具调用固定在关键步骤顶部，不被最近窗口挤出；默认关闭，随窗口滚动。",
       "settings.timeMode.clock": "时间点",
-      "settings.timeMode.elapsed": "本轮计时（从 0s 起）",
+      "settings.timeMode.elapsed": "本轮计时",
+      "settings.timeModeNote": "「本轮计时」以本轮任务开始为 0s 起点，显示相对用时；悬停时间可查看对应的具体时间点。",
+      "settings.currentVersion": "当前版本",
+      "settings.latestBadge": "新版本",
+      "settings.latestTitle": "在 GitHub 查看最新版本",
       "settings.feedbackGroup": "反馈",
       "settings.feedback": "问题反馈（GitHub Issues）",
       "settings.fullHeightRow": "分区完整展示（不限高）",
@@ -146,6 +299,12 @@ window.__ModuleLoader__.load({
       "reference.hideCommon": "过滤常见",
       "stats.duration": "用时 {v}",
       "stats.duration.title": "本轮用时（首末事件间隔）",
+      "stats.duration.timeline": "点击打开时间轴，按时间点回看进展 / 产物 / 引用",
+      "timeline.live": "最新",
+      "timeline.reset": "回到最新",
+      "timeline.prevTurn": "上一轮",
+      "timeline.prevTurnTitle": "切换到第 {n} 轮，时间轴保持打开",
+      "timeline.close": "关闭时间轴",
       "stats.tools": "工具 {n}",
       "stats.tools.title": "工具调用次数",
       "stats.commands": "命令 {n}",
@@ -167,6 +326,15 @@ window.__ModuleLoader__.load({
       "goal.blocked": "受阻",
       "goal.complete": "已完成",
       "artifact.presented": "交付",
+      "artifact.memory": "记忆",
+      "artifact.menu.reveal": "在上层文件夹中显示",
+      "artifact.menu.openWith": "打开方式",
+      "artifact.menu.loading": "正在读取可用应用…",
+      "artifact.menu.unavailable": "当前部署不支持系统打开",
+      "artifact.menu.noApps": "未找到关联应用",
+      "artifact.menu.default": "默认",
+      "artifact.menu.revealError": "无法在上层文件夹中显示，请重试",
+      "artifact.menu.openError": "无法用该应用打开，请重试",
       "artifact.produced": "生成",
       "artifact.binary": "二进制",
       "reference.kind.context": "上下文",
@@ -194,7 +362,7 @@ window.__ModuleLoader__.load({
     const en = {
       "view.tab": "Overview",
       "panel.title": "Overview",
-      "guide.title": "Overview",
+      "guide.title": "Conversation Overview",
       "guide.description": "Progress, artifacts & references",
       "section.progress": "Progress",
       "section.artifacts": "Artifacts",
@@ -202,6 +370,8 @@ window.__ModuleLoader__.load({
       "progress.empty": "Progress appears here once tasks or todos are generated",
       "progress.emptyTurn": "No task plan was created in this turn",
       "progress.recentSteps": "Key steps in this turn (latest 6)",
+      "step.compact": "Context compaction",
+      "step.approval": "User approval",
       "progress.allSteps": "Key steps in this turn (all)",
       "progress.showEarlierSteps": "Show earlier steps",
       "progress.moreStepsCount": "{n} more steps",
@@ -223,15 +393,21 @@ window.__ModuleLoader__.load({
       "artifacts.viewAll": "Review all changes",
       "settings.summary": "Control the overview sections and where they appear",
       "settings.nav": "Overview",
-      "settings.pageTitle": "Conversation Overview",
+      "settings.pageTitle": "Conversation Overview (dsh-conversation-overview)",
       "settings.sections": "Sections",
       "settings.showProgress": "Progress (tasks and todos)",
       "settings.showArtifacts": "Artifacts (files produced)",
       "settings.showReferences": "References (context, memories)",
       "settings.showStats": "Stats (duration, tool calls, …)",
       "settings.timeMode": "Time display",
+      "settings.stepAnchors": "Pin milestone steps",
+      "settings.stepAnchorsNote": "When on, context compaction, user approvals, and failed tool calls stay pinned above the latest-steps window instead of scrolling out. Off by default.",
       "settings.timeMode.clock": "Clock time",
-      "settings.timeMode.elapsed": "Turn elapsed (from 0s)",
+      "settings.timeMode.elapsed": "Turn elapsed",
+      "settings.timeModeNote": "'Turn elapsed' counts from 0s at the start of the turn; hover a time to see its clock value.",
+      "settings.currentVersion": "Current version",
+      "settings.latestBadge": "New version",
+      "settings.latestTitle": "View the latest release on GitHub",
       "settings.feedbackGroup": "Feedback",
       "settings.feedback": "Report an issue (GitHub Issues)",
       "settings.fullHeightRow": "Show sections in full (no max height)",
@@ -300,6 +476,12 @@ window.__ModuleLoader__.load({
       "reference.hideCommon": "Filter common",
       "stats.duration": "{v} elapsed",
       "stats.duration.title": "Turn duration (first to last event)",
+      "stats.duration.timeline": "Open the timeline to review progress, artifacts, and references at any moment",
+      "timeline.live": "Live",
+      "timeline.reset": "Back to live",
+      "timeline.prevTurn": "Previous turn",
+      "timeline.prevTurnTitle": "Switch to turn {n} and keep the timeline open",
+      "timeline.close": "Close timeline",
       "stats.tools": "{n} tools",
       "stats.tools.title": "Tool calls",
       "stats.commands": "{n} cmds",
@@ -321,6 +503,15 @@ window.__ModuleLoader__.load({
       "goal.blocked": "Blocked",
       "goal.complete": "Completed",
       "artifact.presented": "Delivered",
+      "artifact.memory": "Memory",
+      "artifact.menu.reveal": "Show in Enclosing Folder",
+      "artifact.menu.openWith": "Open With",
+      "artifact.menu.loading": "Loading applications…",
+      "artifact.menu.unavailable": "System open is unavailable in this deployment",
+      "artifact.menu.noApps": "No associated applications found",
+      "artifact.menu.default": "Default",
+      "artifact.menu.revealError": "Could not reveal the file; try again",
+      "artifact.menu.openError": "Could not open with this application; try again",
       "artifact.produced": "Produced",
       "artifact.binary": "binary",
       "reference.kind.context": "Context",
@@ -370,6 +561,7 @@ window.__ModuleLoader__.load({
         showReferences: flag(source.showReferences),
         showStats: flag(source.showStats),
         timeMode: TIME_MODES.indexOf(source.timeMode) !== -1 ? source.timeMode : "clock",
+        stepAnchors: source.stepAnchors === true,
         placement: PLACEMENTS.indexOf(source.placement) !== -1 ? source.placement : "both",
         sectionFullHeight: source.sectionFullHeight === true,
         todoPrompt: typeof source.todoPrompt === "boolean" ? source.todoPrompt : true,
@@ -644,6 +836,125 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /* ------------------------------------------------------------------ */
+    /* Host desktop file actions (reveal / open with) via the session remote */
+    /* ------------------------------------------------------------------ */
+
+    const desktopOpenState = { value: null, inflight: null };
+
+    function hostSessionRemote() {
+      const ctx = runtime && runtime.ctx;
+      if (!ctx) return null;
+      try {
+        /* the cordis context proxy THROWS for services this entry has not
+           injected; degrade to "no desktop actions" instead of crashing render */
+        const remote = ctx.remote;
+        return isRecord(remote) && isRecord(remote.session) ? remote.session : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function desktopCanOpen() {
+      const remote = hostSessionRemote();
+      if (remote === null || typeof remote.canOpenWorkspacePath !== "function") return Promise.resolve(false);
+      if (desktopOpenState.value !== null) return Promise.resolve(desktopOpenState.value);
+      if (desktopOpenState.inflight !== null) return desktopOpenState.inflight;
+      desktopOpenState.inflight = Promise.resolve()
+        .then(() => remote.canOpenWorkspacePath())
+        .then((result) => {
+          desktopOpenState.value = isRecord(result) && result.ok === true && result.value === true;
+          desktopOpenState.inflight = null;
+          return desktopOpenState.value;
+        })
+        .catch(() => {
+          desktopOpenState.inflight = null;
+          return false;
+        });
+      return desktopOpenState.inflight;
+    }
+
+    function desktopOpenPath(path, action, application) {
+      const remote = hostSessionRemote();
+      if (remote === null || typeof remote.openWorkspacePath !== "function" || typeof path !== "string" || path === "") return Promise.resolve(false);
+      const request = action === "reveal" ? { path, action } : application === undefined ? { path } : { path, application };
+      return Promise.resolve()
+        .then(() => remote.openWorkspacePath(request))
+        .then((result) => isRecord(result) && result.ok === true)
+        .catch(() => false);
+    }
+
+    function desktopApplications(path, signal) {
+      const remote = hostSessionRemote();
+      if (remote === null || typeof remote.workspacePathApplications !== "function") return Promise.resolve(null);
+      return Promise.resolve()
+        .then(() => remote.workspacePathApplications({ path }, signal))
+        .then((result) => (isRecord(result) && result.ok === true && Array.isArray(result.value) ? result.value : null))
+        .catch(() => null);
+    }
+
+    /* Right-click menu on an artifact row: reveal in the enclosing folder, or pick
+       one of the OS-registered applications to open the file with. */
+    function ArtifactFileMenu({ menu, t, onClose }) {
+      const [phase, setPhase] = React.useState("loading"); /* loading | ready | unavailable */
+      const [apps, setApps] = React.useState([]);
+      const [failed, setFailed] = React.useState(null);
+      const pathRef = React.useRef(menu.path);
+      React.useEffect(() => {
+        let cancelled = false;
+        const controller = typeof AbortController === "function" ? new AbortController() : null;
+        desktopCanOpen().then((can) => {
+          if (cancelled) return undefined;
+          if (!can) {
+            setPhase("unavailable");
+            return undefined;
+          }
+          return desktopApplications(pathRef.current, controller !== null ? controller.signal : undefined).then((list) => {
+            if (cancelled || (controller !== null && controller.signal.aborted)) return;
+            setApps(list === null ? [] : list.filter((app) => isRecord(app) && typeof app.id === "string" && app.id !== "" && typeof app.name === "string"));
+            setPhase("ready");
+          });
+        });
+        return () => {
+          cancelled = true;
+          if (controller !== null) controller.abort();
+        };
+      }, []);
+      const runAction = (action, application) => {
+        desktopOpenPath(menu.path, action, application).then((ok) => {
+          if (ok) onClose();
+          else setFailed(action === "reveal" ? t("artifact.menu.revealError") : t("artifact.menu.openError"));
+        });
+      };
+      const clamp = (value, max) => Math.max(8, Math.min(value, max));
+      const style = {
+        left: `${clamp(menu.x, (typeof window !== "undefined" ? window.innerWidth : 1200) - 250)}px`,
+        top: `${clamp(menu.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 320)}px`,
+      };
+      return h(
+        "div",
+        { className: "dsov-fileMenu", style, onMouseDown: (event) => event.stopPropagation(), onContextMenu: (event) => event.preventDefault() },
+        h("button", { type: "button", className: "dsov-fileMenuItem", onClick: () => runAction("reveal") }, t("artifact.menu.reveal")),
+        h("div", { className: "dsov-fileMenuSep" }),
+        h("div", { className: "dsov-fileMenuHead" }, t("artifact.menu.openWith")),
+        phase === "loading" ? h("div", { className: "dsov-fileMenuHint" }, t("artifact.menu.loading")) : null,
+        phase === "unavailable" ? h("div", { className: "dsov-fileMenuHint" }, t("artifact.menu.unavailable")) : null,
+        phase === "ready" && apps.length === 0 ? h("div", { className: "dsov-fileMenuHint" }, t("artifact.menu.noApps")) : null,
+        phase === "ready"
+          ? apps.map((app) =>
+              h(
+                "button",
+                { type: "button", className: "dsov-fileMenuItem", key: app.id, onClick: () => runAction("open", app.id) },
+                typeof app.icon === "string" && app.icon !== "" ? h("img", { className: "dsov-fileMenuIcon", src: app.icon, alt: "" }) : h("span", { className: "dsov-fileMenuIcon" }),
+                h("span", { className: "dsov-fileMenuName" }, app.name),
+                app.default === true ? h("span", { className: "dsov-fileMenuTag" }, t("artifact.menu.default")) : null
+              )
+            )
+          : null,
+        failed !== null ? h("div", { className: "dsov-fileMenuErr" }, failed) : null
+      );
+    }
+
     function openOverviewTab() {
       const ctx = runtime && runtime.ctx;
       const sidebar = ctx && ctx.sidebarRight;
@@ -741,6 +1052,32 @@ window.__ModuleLoader__.load({
       const segment = at === -1 ? trimmed : trimmed.slice(at + 1);
       const name = segment.endsWith(".md") ? segment.slice(0, -3) : segment;
       return name === "" ? String(uri) : name;
+    }
+
+    /** SKILL.md refs read as their skill folder name so several skills stay distinguishable. */
+    function vikingSkillName(uri) {
+      const match = /\/skills\/([^/]+)\/SKILL\.md$/i.exec(String(uri));
+      return match !== null ? match[1] : null;
+    }
+
+    function vikingLabel(uri) {
+      const skill = vikingSkillName(uri);
+      return skill !== null ? skill : vikingName(uri);
+    }
+
+    /** Ref kind: anything under a skills/ root reads as SKILL, the rest stays a memory file. */
+    function vikingRefKind(uri) {
+      const value = String(uri);
+      return /\/skills\/[^/]+(\/SKILL\.md)?\/?$/i.test(value) ? "skill" : "memory-file";
+    }
+
+    /** Folder URIs end with "/" or their last segment carries no file extension. */
+    function vikingIsDir(uri) {
+      const value = String(uri);
+      if (value.endsWith("/")) return true;
+      const parts = value.split("/").filter((part) => part !== "");
+      const last = parts.length > 0 ? parts[parts.length - 1] : "";
+      return last !== "" && last.indexOf(".") === -1;
     }
 
     function vikingAddress(uri) {
@@ -1004,6 +1341,10 @@ window.__ModuleLoader__.load({
     }
 
     function openArtifact(binding, artifact, stats) {
+      if (typeof artifact.path === "string" && artifact.path.startsWith("viking://")) {
+        openVikingPreview(artifact.path);
+        return;
+      }
       if (!binding) return;
       const stat = stats ? stats.get(absPath(sessionCwd(binding.sessionId), artifact.path)) : undefined;
       if (stat && stat.coords && openChangesReview(binding.sessionId, stat.coords, stat.index)) return;
@@ -1093,6 +1434,8 @@ window.__ModuleLoader__.load({
     }
 
     const MEMORY_REFERENCE_TOOLS = new Set(["search", "find", "read", "glob", "grep", "list", "tree"]);
+    /* viking write tools produce durable memory files: they fold into the artifacts section */
+    const MEMORY_MUTATION_TOOLS = new Set(["write", "edit", "add_resource", "add_skill"]);
 
     function refKindForSource(source, kind) {
       if (kind.startsWith("plugin:openviking") || kind.startsWith("plugin:ov")) return "memory";
@@ -1341,9 +1684,18 @@ window.__ModuleLoader__.load({
     }
 
     /** True while the session has a pending interaction (approval / question / plan exit). */
+    function readSessionStatusSource() {
+      const ctx = runtime && runtime.ctx;
+      if (!ctx) return undefined;
+      try {
+        return ctx.uiSession && ctx.uiSession.sessionStatus ? ctx.uiSession.sessionStatus : undefined;
+      } catch {
+        return undefined;
+      }
+    }
+
     function useSessionWaiting(sessionId) {
-      const ctx = runtime && runtime.ctx ? runtime.ctx : undefined;
-      const source = ctx && ctx.uiSession && ctx.uiSession.sessionStatus ? ctx.uiSession.sessionStatus : undefined;
+      const source = readSessionStatusSource();
       const subscribe = React.useCallback(
         (onChange) => (source !== undefined && typeof source.subscribe === "function" ? source.subscribe(onChange) : () => {}),
         [source]
@@ -1392,6 +1744,7 @@ window.__ModuleLoader__.load({
         presented: update.presented === true,
         produced: update.produced === true,
         time: typeof update.time === "number" ? update.time : 0,
+        firstTime: typeof update.time === "number" ? update.time : 0,
         seq: typeof update.seq === "number" ? update.seq : 0,
       };
       folder.artifacts.set(path, artifact);
@@ -1433,7 +1786,7 @@ window.__ModuleLoader__.load({
         touch(folder);
         return;
       }
-      const stored = { ...ref, count: 1 };
+      const stored = { ...ref, count: 1, firstTime: typeof ref.time === "number" ? ref.time : 0 };
       noteRefTurn(stored, folder);
       folder.refs.set(ref.key, stored);
       folder.refOrder.push(ref.key);
@@ -1448,6 +1801,75 @@ window.__ModuleLoader__.load({
 
     /** One-line human target for a tool call: file, command, query, url, name… */
     /** Team-record key a tool call creates: teammate name / task subject / subagent label. */
+    /** Match team delegates (members, subagents, tasks) to todo items by normalized text
+        containment, so each delegate renders under the todo it belongs to. */
+    function planTodoAttachments(todos, members, teamTasks, subagents) {
+      const attachments = new Map();
+      if (!Array.isArray(todos) || todos.length === 0) return attachments;
+      const normText = (value) =>
+        typeof value === "string"
+          ? value
+              .toLowerCase()
+              .replace(/[-_/]+/g, " ")
+              .replace(/[^a-z0-9\u4e00-\u9fff ]+/g, "")
+              .replace(/\s+/g, " ")
+              .trim()
+          : "";
+      const matchScore = (a, b) => {
+        const x = normText(a);
+        const y = normText(b);
+        if (x === "" || y === "") return 0;
+        if (x === y) return x.length;
+        if (x.length >= 6 && y.includes(x)) return x.length;
+        if (y.length >= 6 && x.includes(y)) return y.length;
+        return 0;
+      };
+      const ownedBy = (id) => teamTasks.filter((task) => isRecord(task) && task.ownerId === id);
+      const bestFor = (texts) => {
+        let best = -1;
+        let bestScore = 5;
+        todos.forEach((todo, index) => {
+          const content = isRecord(todo) ? todo.content : "";
+          let score = 0;
+          for (const text of texts) score = Math.max(score, matchScore(text, content));
+          if (score > bestScore) {
+            bestScore = score;
+            best = index;
+          }
+        });
+        return best;
+      };
+      const attach = (index, item) => {
+        const list = attachments.get(index);
+        if (list === undefined) attachments.set(index, [item]);
+        else list.push(item);
+      };
+      for (const member of members.filter(isRecord)) {
+        const owned = ownedBy(member.id);
+        const index = bestFor([member.name, member.description, ...owned.map((task) => task.subject)]);
+        if (index >= 0) attach(index, { kind: "member", record: member, owned });
+      }
+      for (const sub of subagents.filter(isRecord)) {
+        const index = bestFor([sub.label]);
+        if (index >= 0) attach(index, { kind: "sub", record: sub, owned: [] });
+      }
+      const memberOwned = new Set();
+      for (const list of attachments.values()) {
+        for (const item of list) {
+          if (item.kind === "member") for (const task of item.owned) memberOwned.add(task.id);
+        }
+      }
+      for (const task of teamTasks.filter(isRecord)) {
+        if (memberOwned.has(task.id)) continue;
+        if (typeof task.ownerId === "string" && members.some((member) => isRecord(member) && member.id === task.ownerId)) continue;
+        const index = bestFor([task.subject]);
+        if (index >= 0) attach(index, { kind: "task", record: task, owned: [] });
+      }
+      const timeOf = (item) => (isRecord(item.record) && typeof item.record.time === "number" ? item.record.time : 0);
+      for (const list of attachments.values()) list.sort((left, right) => timeOf(left) - timeOf(right));
+      return attachments;
+    }
+
     function teamStepKey(name, args) {
       if (!isRecord(args)) return undefined;
       if (name === "spawn_teammate" && typeof args.name === "string" && args.name !== "") return args.name;
@@ -1608,6 +2030,32 @@ window.__ModuleLoader__.load({
           touch(folder);
           return;
         }
+        case "approval/asked": {
+          if (!isRecord(data) || typeof data.id !== "string" || data.id === "") return;
+          const approvalBucket = turnBucket(folder, folder.currentTurn);
+          const toolName = typeof data.toolName === "string" ? data.toolName : "";
+          addStep(folder, approvalBucket, {
+            callId: `approval-${data.id}`,
+            name: "approval",
+            detail: toolName,
+            full: typeof data.reason === "string" && data.reason !== "" ? `${toolName} · ${data.reason}` : toolName,
+            milestone: true,
+            done: false,
+            seq: event.seq,
+            time: event.time,
+          });
+          return;
+        }
+        case "approval/decided": {
+          if (!isRecord(data) || typeof data.id !== "string" || data.id === "") return;
+          const outcome = typeof data.outcome === "string" ? data.outcome : "";
+          const approvalStep = folder.stepByCall.get(`approval-${data.id}`);
+          if (approvalStep !== undefined && outcome !== "" && typeof approvalStep.detail === "string" && !approvalStep.detail.includes(outcome)) {
+            approvalStep.detail = approvalStep.detail === "" ? outcome : `${approvalStep.detail} · ${outcome}`;
+          }
+          markStepDone(folder, `approval-${data.id}`, event.time, /denied|reject/i.test(outcome));
+          return;
+        }
         case "workspace/changes": {
           if (!isRecord(data) || typeof data.turn !== "number" || !Number.isSafeInteger(data.turn) || data.turn < 1) return;
           if (typeof event.seq !== "number") return;
@@ -1661,6 +2109,23 @@ window.__ModuleLoader__.load({
             return;
           }
           const memoryTool = memoryToolsOf(name);
+          if (memoryTool !== null && MEMORY_MUTATION_TOOLS.has(memoryTool)) {
+            const uri =
+              args !== null && isRecord(args)
+                ? isVikingUri(args.uri)
+                  ? args.uri
+                  : isVikingUri(args.to)
+                    ? args.to
+                    : isVikingUri(args.parent)
+                      ? args.parent
+                      : null
+                : null;
+            if (uri !== null) {
+              const description = typeof args.description === "string" ? args.description : "";
+              folder.pending.set(callId, { type: "artifact", path: uri, description });
+            }
+            return;
+          }
           if (memoryTool !== null && MEMORY_REFERENCE_TOOLS.has(memoryTool)) {
             const detail = [];
             const uris = [];
@@ -1680,10 +2145,10 @@ window.__ModuleLoader__.load({
             const refs = [];
             for (const uri of uris.slice(0, 8)) {
               refs.push({
-                kind: "memory-file",
+                kind: vikingRefKind(uri),
                 uri,
                 producer: `openviking · ${memoryTool}`,
-                label: vikingName(uri),
+                label: vikingLabel(uri),
                 detail: [],
                 key: `memory-file|${uri}`,
                 seq: event.seq,
@@ -1723,7 +2188,12 @@ window.__ModuleLoader__.load({
           if (message.isError === true) return;
           const bucket = turnBucket(folder, folder.currentTurn);
           if (pending.type === "artifact") {
-            upsertArtifact(folder, bucket, pending.path, { produced: true, seq: event.seq, time: event.time });
+            upsertArtifact(folder, bucket, pending.path, {
+              produced: true,
+              ...(typeof pending.description === "string" && pending.description !== "" ? { description: pending.description } : {}),
+              seq: event.seq,
+              time: event.time,
+            });
           } else {
             const resultText = textOf(message.content);
             for (const ref of pending.refs) {
@@ -1738,9 +2208,11 @@ window.__ModuleLoader__.load({
           return;
         }
         case "user/message": {
-          if (!isAppendSurfaceEvent(event) || !isRecord(data)) return;
+          if (!isRecord(data)) return;
           const source = isRecord(data.source) ? data.source : null;
           const kind = source !== null && typeof source.kind === "string" ? source.kind : "user";
+          /* a compact checkpoint replaces the event span it summarizes; every other message must append */
+          if (kind !== "compact-checkpoint" && !isAppendSurfaceEvent(event)) return;
           const bucket = turnBucket(folder, folder.currentTurn);
           if (kind === "user") {
             const mentions = mentionsOfUserText(textOf(data.content));
@@ -1752,6 +2224,22 @@ window.__ModuleLoader__.load({
             }
             return;
           }
+          if (kind === "compact-checkpoint") {
+            /* context compaction is a milestone: anchor it as a durable key step */
+            const compactionId = source !== null && typeof source.compactionId === "string" ? source.compactionId : `seq-${event.seq}`;
+            const summaryText = textOf(data.content);
+            addStep(folder, bucket, {
+              name: "compact-checkpoint",
+              detail: summaryText.length > 1024 ? `≈${Math.round(summaryText.length / 1024)} KB` : "",
+              full: compactionId,
+              teamKey: `compact:${compactionId}`,
+              milestone: true,
+              done: true,
+              seq: event.seq,
+              time: event.time,
+            });
+            return;
+          }
           const label = contextLabel(source, kind);
           const detail = contextDetail(source, data.content);
           const refKind = refKindForSource(source, kind);
@@ -1760,11 +2248,11 @@ window.__ModuleLoader__.load({
           if (refKind === "memory" && detail.length > 0 && detail.every(isVikingUri)) {
             for (const uri of detail) {
               addReference(folder, bucket, {
-                kind: "memory-file",
+                kind: vikingRefKind(uri),
                 uri,
                 producer,
                 form,
-                label: vikingName(uri),
+                label: vikingLabel(uri),
                 detail: [],
                 key: `memory-file|${uri}`,
                 seq: event.seq,
@@ -1871,9 +2359,13 @@ window.__ModuleLoader__.load({
       const allSteps = Array.isArray(source.steps) ? source.steps : [];
       const recentSteps = allSteps.slice(-6);
       const anchorCandidates = [...(Array.isArray(source.anchors) ? source.anchors : []), ...allSteps].filter(
-        (step, index, list) => isRecord(step) && typeof step.teamKey === "string" && list.indexOf(step) === index && recentSteps.indexOf(step) === -1
+        (step, index, list) =>
+          isRecord(step) && typeof step.teamKey === "string" && step.milestone !== true && list.indexOf(step) === index && recentSteps.indexOf(step) === -1
       );
       const anchorSteps = anchorCandidates.slice(-6);
+      /* milestone steps (compaction, approvals) ride the anchor lane for retention only;
+         whether they pin above the window is a display choice (cfg.stepAnchors) */
+      const milestoneSteps = (Array.isArray(source.anchors) ? source.anchors : []).filter((step) => isRecord(step) && step.milestone === true);
       return {
         todos,
         todosTime,
@@ -1884,6 +2376,9 @@ window.__ModuleLoader__.load({
         team,
         stats,
         turnStart: st.start > 0 ? st.start : null,
+        turnEnd: st.end > 0 ? st.end : null,
+        milestones: milestoneSteps,
+        todoHistory: folder.todoRecords.slice(-300),
         changeTurns: changeTurns.slice(),
         hasMore: windowSnapshot.hasMore === true,
         localeRev,
@@ -1893,7 +2388,7 @@ window.__ModuleLoader__.load({
       };
     }
 
-    const EMPTY_STATE = { todos: null, todosTime: 0, artifacts: [], references: [], steps: [], stepsAll: [], team: { members: [], tasks: [], subagents: [] }, stats: { durationMs: 0, toolCalls: 0, commands: 0, errors: 0, files: 0 }, turnStart: null, changeTurns: [], hasMore: false, localeRev: 0, turns: [], latestTurn: null, scope: "latest" };
+    const EMPTY_STATE = { todos: null, todosTime: 0, artifacts: [], references: [], steps: [], stepsAll: [], team: { members: [], tasks: [], subagents: [] }, stats: { durationMs: 0, toolCalls: 0, commands: 0, errors: 0, files: 0 }, turnStart: null, turnEnd: null, milestones: [], todoHistory: [], changeTurns: [], hasMore: false, localeRev: 0, turns: [], latestTurn: null, scope: "latest" };
 
     function createSummaryStore(binding) {
       const source = binding.eventSource;
@@ -2764,13 +3259,18 @@ function FileTypeIcon(props) {
       );
     }
 
+    /* Same artwork as icon.svg, the icon the plugin list and settings show. */
     function OverviewGlyph({ size = 16, className }) {
-      return svg(size, className, [
-        h("rect", { key: "r", x: 2.2, y: 2.2, width: 11.6, height: 11.6, rx: 2.8, stroke: "currentColor" }),
-        h("path", { key: "l1", d: "M5 5.6h6", stroke: "currentColor", strokeLinecap: "round" }),
-        h("path", { key: "l2", d: "M5 8.2h6", stroke: "currentColor", strokeLinecap: "round" }),
-        h("path", { key: "l3", d: "M5 10.8h3.4", stroke: "currentColor", strokeLinecap: "round" }),
-      ]);
+      return svg(
+        size,
+        className,
+        [
+          h("rect", { key: "r", x: 8, y: 8, width: 48, height: 48, rx: 12, stroke: "#565e6d", strokeWidth: 3 }),
+          h("path", { key: "l", d: "M20 24h24M20 33h24M20 42h14", stroke: "#247bbf", strokeWidth: 3, strokeLinecap: "round" }),
+          h("circle", { key: "c", cx: 43, cy: 42, r: 4, fill: "#2ea36a" }),
+        ],
+        "0 0 64 64"
+      );
     }
 
     function IconProgress({ size = 16, className }) {
@@ -2837,6 +3337,14 @@ function FileTypeIcon(props) {
 
     function IconChevron({ size = 16, className }) {
       return svg(size, className, [h("path", { key: "a", d: "m5.8 3.6 4.4 4.4-4.4 4.4", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round" })]);
+    }
+
+    function IconCompact({ size = 16, className }) {
+      return svg(size, className, [
+        h("path", { key: "a", d: "M3.2 8h9.6", stroke: "currentColor", strokeLinecap: "round" }),
+        h("path", { key: "b", d: "M8 2.4v3.4M6.3 4.1 8 5.8l1.7-1.7", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round" }),
+        h("path", { key: "c", d: "M8 13.6v-3.4M6.3 11.9 8 10.2l1.7 1.7", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round" }),
+      ]);
     }
 
     function IconHistory({ size = 16, className }) {
@@ -3107,9 +3615,13 @@ function FileTypeIcon(props) {
       complete: "success",
     };
 
-    function ProgressSection({ summary, goal, t, waiting, cfg }) {
+    function ProgressSection({ summary, goal, t, waiting, cfg, asOf }) {
       const fmtTime = (ts) => formatTime(ts, cfg.timeMode, summary.turnStart);
       const timeTitle = (ts) => (cfg.timeMode === "elapsed" ? formatTime(ts) : undefined);
+      /* timeline scrubbing: only what already happened at `asOf` is shown */
+      const asOfTime = typeof asOf === "number" && asOf > 0 ? asOf : null;
+      const pinMilestones = isRecord(cfg) && cfg.stepAnchors === true;
+      const inTime = (record) => asOfTime === null || ((record.firstTime || record.time || 0) <= asOfTime);
       /* todo → composer prompt flash */
       const [promptFlash, setPromptFlash] = React.useState(null);
       const flashTimer = React.useRef(undefined);
@@ -3164,8 +3676,30 @@ function FileTypeIcon(props) {
         if (!handled) setFlash("err");
       };
       /* steps: newest-first window; keep the evicted bottom row as a fading ghost */
-      const steps = Array.isArray(summary.steps) ? summary.steps.filter((step) => isRecord(step)) : [];
-      const stepsAll = Array.isArray(summary.stepsAll) ? summary.stepsAll.filter((step) => isRecord(step)) : [];
+      const stepsRaw = Array.isArray(summary.steps) ? summary.steps.filter((step) => isRecord(step)) : [];
+      const stepsAllRaw = Array.isArray(summary.stepsAll) ? summary.stepsAll.filter((step) => isRecord(step)) : [];
+      const stepAt = (step) => asOfTime === null || (typeof step.time === "number" ? step.time <= asOfTime : true);
+      /* a step whose result landed after the scrub point reads as still running */
+      const stepClamped = (step) => {
+        if (asOfTime === null || step.done !== true) return step;
+        const end = typeof step.endTime === "number" ? step.endTime : typeof step.time === "number" ? step.time : 0;
+        return end <= asOfTime ? step : { ...step, done: false, error: false, endTime: undefined };
+      };
+      const stepsAll = stepsAllRaw.filter(stepAt).map(stepClamped);
+      /* while scrubbing, rebuild the "latest 6" window as it looked at time T:
+         the live window sits near the turn end, so filtering it by T would empty
+         the section mid-drag even though earlier steps already happened */
+      const steps =
+        asOfTime === null
+          ? stepsRaw.filter(stepAt).map(stepClamped)
+          : (() => {
+              const visible = stepsAllRaw.filter(stepAt);
+              const recent = visible.slice(-6);
+              const anchors = stepsRaw.filter(
+                (step) => stepAt(step) && typeof step.teamKey === "string" && step.milestone !== true && recent.indexOf(step) === -1
+              );
+              return [...anchors, ...recent].map(stepClamped);
+            })();
       const [ghost, setGhost] = React.useState(null);
       const [stepsExpanded, setStepsExpanded] = React.useState(false);
       const ghostTimer = React.useRef(undefined);
@@ -3173,6 +3707,7 @@ function FileTypeIcon(props) {
       const prevScope = React.useRef(summary.scope);
       /* enter animation only for rows that arrive while mounted; first paint per scope is silent */
       const stepKeyOf = (step, index) => (typeof step.callId === "string" && step.callId !== "" ? `step-${step.callId}` : `step-idx-${index}`);
+      const milestoneKeyOf = (step) => (typeof step.callId === "string" && step.callId !== "" ? step.callId : `${step.name}|${step.seq}`);
       const seenSteps = React.useRef(null);
       /* full retained history for the expander: anchors outside the window + the whole bucket */
       const allStepIds = new Set(stepsAll.map((step) => step.callId).filter((id) => typeof id === "string"));
@@ -3180,7 +3715,25 @@ function FileTypeIcon(props) {
       const expandedSteps = [...anchorExtras, ...stepsAll];
       const canExpand = expandedSteps.length > steps.length;
       const stepsOpen = stepsExpanded && canExpand;
-      const displaySteps = stepsOpen ? expandedSteps : steps;
+      /* cfg.stepAnchors pins compaction/approval/failure steps above the window */
+      const milestoneExtras = [];
+      if (pinMilestones) {
+        const baseSteps = stepsOpen ? expandedSteps : steps;
+        const baseKeys = new Set(baseSteps.map(milestoneKeyOf));
+        const candidates = [
+          ...(Array.isArray(summary.milestones) ? summary.milestones.filter((step) => isRecord(step) && step.milestone === true) : []),
+          ...stepsAll.filter((step) => step.error === true),
+        ];
+        for (const candidate of candidates) {
+          if (!stepAt(candidate)) continue;
+          const key = milestoneKeyOf(candidate);
+          if (baseKeys.has(key)) continue;
+          baseKeys.add(key);
+          milestoneExtras.push(stepClamped(candidate));
+        }
+        milestoneExtras.sort((left, right) => (left.time || 0) - (right.time || 0));
+      }
+      const displaySteps = milestoneExtras.length > 0 ? [...milestoneExtras, ...(stepsOpen ? expandedSteps : steps)] : stepsOpen ? expandedSteps : steps;
       if (seenSteps.current === null || seenSteps.current.scope !== summary.scope) {
         seenSteps.current = { scope: summary.scope, keys: new Set(displaySteps.map(stepKeyOf)) };
       }
@@ -3197,7 +3750,7 @@ function FileTypeIcon(props) {
           prevScope.current = summary.scope;
           return;
         }
-        if (previous.length === 0) return;
+        if (asOfTime !== null || previous.length === 0) return;
         const currentIds = new Set(steps.map((step) => step.callId));
         const dropped = previous.filter((step) => typeof step.callId === "string" && !currentIds.has(step.callId));
         if (dropped.length === 0) return;
@@ -3210,10 +3763,28 @@ function FileTypeIcon(props) {
       }, [steps]);
       /* team data + todos drive both the merged list and the step nesting */
       const team = isRecord(summary.team) ? summary.team : null;
-      const members = team && Array.isArray(team.members) ? team.members.filter((member) => isRecord(member)) : [];
-      const teamTasks = team && Array.isArray(team.tasks) ? team.tasks.filter((task) => isRecord(task)) : [];
-      const subagents = team && Array.isArray(team.subagents) ? team.subagents.filter((sub) => isRecord(sub)) : [];
-      const todos = Array.isArray(summary.todos) ? summary.todos : null;
+      const members = team && Array.isArray(team.members) ? team.members.filter((member) => isRecord(member) && inTime(member)) : [];
+      const teamTasks = team && Array.isArray(team.tasks) ? team.tasks.filter((task) => isRecord(task) && inTime(task)) : [];
+      const subagents = team && Array.isArray(team.subagents) ? team.subagents.filter((sub) => isRecord(sub) && inTime(sub)) : [];
+      const todoHistory = Array.isArray(summary.todoHistory) ? summary.todoHistory : [];
+      let todos = Array.isArray(summary.todos) ? summary.todos : null;
+      if (asOfTime !== null) {
+        /* mirror buildState's turn scoping: a turn without its own todos must
+           not inherit an earlier turn's snapshot while scrubbing */
+        const scopeText = typeof summary.scope === "string" ? summary.scope : "";
+        const scopedTurn = scopeText.startsWith("turn:")
+          ? Number.parseInt(scopeText.slice(5), 10)
+          : scopeText === "latest" && Number.isFinite(summary.latestTurn)
+            ? summary.latestTurn
+            : null;
+        let snapshot = null;
+        for (const record of todoHistory) {
+          if (!isRecord(record) || !Array.isArray(record.todos)) continue;
+          if (scopedTurn !== null && record.turn !== scopedTurn) continue;
+          if ((record.time || 0) <= asOfTime) snapshot = record;
+        }
+        todos = snapshot !== null ? snapshot.todos : null;
+      }
       const hasTodos = todos !== null && todos.length > 0;
       const hasTeam = members.length + teamTasks.length + subagents.length > 0;
       const showSteps = !hasTodos && steps.length > 0;
@@ -3265,23 +3836,11 @@ function FileTypeIcon(props) {
           h("span", { className: "dsov-time", title: timeTitle(sub.time) }, fmtTime(sub.time))
         );
       };
+      /* members and subagents always read as agents: person icon, tinted red on failure */
       const memberIcon = (member, owned) => {
         const phase = typeof member.phase === "string" ? member.phase : "";
         if (phase === "failed") {
-          return h(
-            "span",
-            { className: "dsov-todoIcon", "data-status": "failed" },
-            h(
-              "svg",
-              { width: 14, height: 14, viewBox: "0 0 14 14", fill: "none", "aria-hidden": "true" },
-              h("circle", { cx: 7, cy: 7, r: 5.6, stroke: "currentColor", strokeWidth: 1.3 }),
-              h("path", { d: "M7 4v3.6", stroke: "currentColor", strokeWidth: 1.3, strokeLinecap: "round" }),
-              h("circle", { cx: 7, cy: 9.9, r: 0.8, fill: "currentColor" })
-            )
-          );
-        }
-        if (owned.length > 0 && owned.every((task) => task.status === "completed")) {
-          return h("span", { className: "dsov-todoIcon", "data-status": "completed" }, h(TodoStatusIcon, { status: "completed" }));
+          return h("span", { className: "dsov-todoIcon dsov-agentIcon", "data-status": "failed" }, h(IconAgent, { size: 14 }));
         }
         return h("span", { className: "dsov-todoIcon dsov-agentIcon" }, h(IconAgent, { size: 14 }));
       };
@@ -3313,6 +3872,20 @@ function FileTypeIcon(props) {
       const consumedMembers = new Set();
       const consumedTasks = new Set();
       const consumedSubs = new Set();
+      /* delegates matched to a todo render nested under it and skip the flat tail */
+      const todoAttachments = hasTodos && hasTeam ? planTodoAttachments(todos, members, teamTasks, subagents) : new Map();
+      for (const list of todoAttachments.values()) {
+        for (const item of list) {
+          if (item.kind === "member") {
+            consumedMembers.add(item.record.id);
+            item.owned.forEach((task) => consumedTasks.add(task.id));
+          } else if (item.kind === "sub") {
+            consumedSubs.add(item.record.childId);
+          } else {
+            consumedTasks.add(item.record.id);
+          }
+        }
+      }
       const stepAttachments = new Map();
       if (showSteps && hasTeam) {
         displaySteps.forEach((step, index) => {
@@ -3412,7 +3985,9 @@ function FileTypeIcon(props) {
                 h(IconChevron, { size: 11 })
               )
             : null,
-          waitingRow
+          step.name === "compact-checkpoint"
+            ? h("span", { className: "dsov-todoIcon dsov-compactIcon" }, h(IconCompact, { size: 15 }))
+            : waitingRow
             ? h(
                 "span",
                 { className: "dsov-todoIcon", "data-status": "waiting" },
@@ -3424,7 +3999,11 @@ function FileTypeIcon(props) {
                 )
               )
             : h("span", { className: "dsov-todoIcon", "data-status": stepRunning ? "in_progress" : "completed" }, h(TodoStatusIcon, { status: stepRunning ? "in_progress" : "completed" })),
-          h("span", { className: "dsov-stepName" }, typeof step.name === "string" ? step.name : ""),
+          h(
+            "span",
+            { className: "dsov-stepName" },
+            step.name === "compact-checkpoint" ? t("step.compact") : step.name === "approval" ? t("step.approval") : typeof step.name === "string" ? step.name : ""
+          ),
           h("span", { className: "dsov-stepDetail" }, detail),
           h("span", { className: "dsov-time", title: timeTitle(typeof step.endTime === "number" ? step.endTime : step.time) }, fmtTime(typeof step.endTime === "number" ? step.endTime : step.time))
         );
@@ -3459,6 +4038,7 @@ function FileTypeIcon(props) {
             h("div", { className: "dsov-progressMeta" }, t("progress.counts", { completed: done, total }))
           )
         );
+        const todoRows = [];
         todos.forEach((todo, index) => {
           const status = TODO_KEYS[todo.status] ? todo.status : "pending";
           const flash = promptFlash !== null && isRecord(promptFlash) && promptFlash.index === index ? promptFlash.state : null;
@@ -3471,7 +4051,21 @@ function FileTypeIcon(props) {
                 : flash === "failed"
                   ? t("progress.todoFailed")
                   : t("progress.todoHint");
-          kids.push(
+          const attached = todoAttachments.get(index);
+          const expandable = Array.isArray(attached) && attached.length > 0;
+          const open = expandable
+            ? overrideOf(
+                `todo:${index}`,
+                attached.some((item) =>
+                  item.kind === "task"
+                    ? item.record.status !== "completed"
+                    : item.kind === "member"
+                      ? item.record.phase === "provisioning" || item.record.phase === "active" || item.owned.some((task) => task.status !== "completed")
+                      : false
+                )
+              )
+            : false;
+          todoRows.push(
             h(
               "div",
               {
@@ -3479,9 +4073,12 @@ function FileTypeIcon(props) {
                 key: `todo-${index}`,
                 "data-status": status,
                 "data-flash": flash === "inserted" || flash === "copied" ? "ok" : flash === "failed" ? "err" : undefined,
+                "data-expandable": expandable ? "true" : undefined,
+                "data-open": expandable ? (open ? "true" : "false") : undefined,
                 role: "button",
                 tabIndex: todoPromptOn ? 0 : undefined,
                 title,
+                onClick: expandable ? () => toggleKey(`todo:${index}`, !open) : undefined,
                 onDoubleClick: () => onTodoClick(index, todo.content),
                 onKeyDown: (event) => {
                   if (event.key === "Enter" || event.key === " ") {
@@ -3490,12 +4087,46 @@ function FileTypeIcon(props) {
                   }
                 },
               },
-              h("span", { className: "dsov-todoIcon", "data-status": status }, h(TodoStatusIcon, { status })),
+              h(
+                "span",
+                { className: "dsov-todoIconSlot" },
+                h("span", { className: "dsov-todoIcon", "data-status": status }, h(TodoStatusIcon, { status })),
+                expandable
+                  ? h(
+                      "span",
+                      {
+                        className: "dsov-chevron dsov-todoChevron",
+                        "data-open": open ? "true" : "false",
+                        title: t(open ? "progress.collapseTeam" : "progress.expandTeam"),
+                        onClick: (event) => {
+                          event.stopPropagation();
+                          toggleKey(`todo:${index}`, !open);
+                        },
+                      },
+                      h(IconChevron, { size: 11 })
+                    )
+                  : null
+              ),
               h("span", { className: "dsov-todoText" }, todo.content),
               h("span", { className: "dsov-todoStatus" }, t(TODO_KEYS[status]))
             )
           );
+          if (expandable && open) {
+            attached.forEach((item) => {
+              if (item.kind === "member") {
+                const memberExpandable = item.owned.length > 0;
+                const memberOpen = memberExpandable ? overrideOf(`member:${item.record.id}`, item.owned.some((task) => task.status !== "completed")) : false;
+                todoRows.push(memberRow(item.record, 1, memberExpandable, memberOpen));
+                if (memberExpandable && memberOpen) item.owned.forEach((task) => todoRows.push(taskRow(task, 2)));
+              } else if (item.kind === "sub") {
+                todoRows.push(subRow(item.record, 1));
+              } else {
+                todoRows.push(taskRow(item.record, 1));
+              }
+            });
+          }
         });
+        kids.push(h("div", { className: "dsov-todos", key: "todos" }, todoRows));
       }
       if (hasTeam && !showSteps) pushFlatTeam(kids);
       if (showSteps) {
@@ -3513,7 +4144,7 @@ function FileTypeIcon(props) {
         let freshCount = 0;
         displaySteps.forEach((step, index) => {
           const key = stepKeyOf(step, index);
-          const fresh = !seenSteps.current.keys.has(key);
+          const fresh = asOfTime === null && !seenSteps.current.keys.has(key);
           if (fresh) {
             seenSteps.current.keys.add(key);
             freshCount += 1;
@@ -3549,12 +4180,33 @@ function FileTypeIcon(props) {
       return h(Section, { id: "progress", icon: h(IconProgress, { size: 15 }), title: t("section.progress"), empty: t(summary.scope === "all" ? "progress.empty" : "progress.emptyTurn") }, kids);
     }
 
-    function ArtifactsSection({ summary, t, binding, stats }) {
+    function ArtifactsSection({ summary, t, binding, stats, asOf }) {
       const cfg = useConfig();
+      const asOfTime = typeof asOf === "number" && asOf > 0 ? asOf : null;
+      const visibleArtifacts = asOfTime === null ? summary.artifacts : summary.artifacts.filter((artifact) => (artifact.firstTime || artifact.time || 0) <= asOfTime);
       const fmtTime = (ts) => formatTime(ts, cfg.timeMode, summary.turnStart);
       const timeTitle = (ts) => (cfg.timeMode === "elapsed" ? formatTime(ts) : undefined);
       const sessionId = binding ? binding.sessionId : undefined;
       const cwd = sessionCwd(sessionId);
+      const canFileMenu = hostSessionRemote() !== null;
+      const [fileMenu, setFileMenu] = React.useState(null);
+      React.useEffect(() => {
+        if (fileMenu === null) return undefined;
+        const close = () => setFileMenu(null);
+        const onKey = (event) => {
+          if (event.key === "Escape") close();
+        };
+        document.addEventListener("mousedown", close);
+        document.addEventListener("keydown", onKey);
+        window.addEventListener("scroll", close, true);
+        window.addEventListener("resize", close);
+        return () => {
+          document.removeEventListener("mousedown", close);
+          document.removeEventListener("keydown", onKey);
+          window.removeEventListener("scroll", close, true);
+          window.removeEventListener("resize", close);
+        };
+      }, [fileMenu]);
       const turns = summary.changeTurns;
       const latest = turns.length > 0 ? turns[turns.length - 1] : null;
       const action =
@@ -3566,9 +4218,10 @@ function FileTypeIcon(props) {
               t("artifacts.viewAll")
             )
           : null;
-      const rows = summary.artifacts.map((artifact, index) => {
+      const rows = visibleArtifacts.map((artifact, index) => {
         const stat = stats ? stats.get(absPath(cwd, artifact.path)) : undefined;
         const showCounts = stat !== undefined && !stat.binary && !stat.oversized && (stat.added > 0 || stat.deleted > 0);
+        const isMemory = typeof artifact.path === "string" && artifact.path.startsWith("viking://");
         return h(
           "button",
           {
@@ -3577,6 +4230,13 @@ function FileTypeIcon(props) {
             key: `${artifact.path}#${index}`,
             title: artifact.description ? `${artifact.path} — ${artifact.description}` : artifact.path,
             onClick: () => openArtifact(binding, artifact, stats),
+            onContextMenu:
+              canFileMenu && !isMemory
+                ? (event) => {
+                    event.preventDefault();
+                    setFileMenu({ x: event.clientX, y: event.clientY, path: absPath(cwd, artifact.path) });
+                  }
+                : undefined,
           },
           h("span", { className: "dsov-fileIcon" }, h(FileTypeIcon, { path: artifact.path, size: 20 })),
           h("span", { className: "dsov-artifactName" }, basename(artifact.path)),
@@ -3590,17 +4250,19 @@ function FileTypeIcon(props) {
             : stat !== undefined && (stat.binary || stat.oversized)
               ? h("span", { className: "dsov-badge", "data-tone": "quiet" }, t("artifact.binary"))
               : null,
+          isMemory ? h("span", { className: "dsov-badge", "data-tone": "quiet" }, t("artifact.memory")) : null,
           artifact.presented ? h("span", { className: "dsov-badge", "data-tone": "brand" }, t("artifact.presented")) : null,
           h("span", { className: "dsov-rowTail" }, h("span", { className: "dsov-time", title: timeTitle(artifact.time) }, fmtTime(artifact.time)))
         );
       });
+      if (fileMenu !== null) rows.push(h(ArtifactFileMenu, { key: "dsov-file-menu", menu: fileMenu, t, onClose: () => setFileMenu(null) }));
       return h(
         Section,
         {
           id: "artifacts",
           icon: h(IconArtifact, { size: 15 }),
           title: t("section.artifacts"),
-          badge: summary.artifacts.length > 0 ? String(summary.artifacts.length) : undefined,
+          badge: visibleArtifacts.length > 0 ? String(visibleArtifacts.length) : undefined,
           empty: t("artifacts.empty"),
           action,
         },
@@ -3706,8 +4368,19 @@ function FileTypeIcon(props) {
       );
     }
 
-    function ReferencesSection({ summary, t, sessionId }) {
+    /** Ref tile: viking rows get file/folder icons, other kinds keep their type icon. */
+    function refTile(ref) {
+      if (ref.kind === "file") return h(FileTypeIcon, { path: ref.label, size: 18 });
+      if ((ref.kind === "memory-file" || ref.kind === "skill") && typeof ref.uri === "string" && isVikingUri(ref.uri)) {
+        return vikingIsDir(ref.uri) ? h(FileTypeIcon, { kind: "folder", size: 18 }) : h(FileTypeIcon, { path: ref.uri, size: 18 });
+      }
+      return h(RefIcon, { kind: ref.kind, size: 14 });
+    }
+
+    function ReferencesSection({ summary, t, sessionId, asOf }) {
       const cfg = useConfig();
+      const asOfTime = typeof asOf === "number" && asOf > 0 ? asOf : null;
+      const allRefs = asOfTime === null ? summary.references : summary.references.filter((ref) => (ref.firstTime || ref.time || 0) <= asOfTime);
       const fmtTime = (ts) => formatTime(ts, cfg.timeMode, summary.turnStart);
       const timeTitle = (ts) => (cfg.timeMode === "elapsed" ? formatTime(ts) : undefined);
       const sortMode = useRefSort();
@@ -3745,7 +4418,7 @@ function FileTypeIcon(props) {
           }, 1200);
         }
       };
-      const scoped = hideCommon ? summary.references.filter((ref) => ref.ubiquitous !== true) : summary.references;
+      const scoped = hideCommon ? allRefs.filter((ref) => ref.ubiquitous !== true) : allRefs;
       const selectedTypes = Array.isArray(typeFilter) ? typeFilter : [];
       const filtered = selectedTypes.length === 0 ? scoped : scoped.filter((ref) => selectedTypes.indexOf(refDisplayType(ref)) !== -1);
       const sorted = sortReferences(filtered, sortMode);
@@ -3755,7 +4428,7 @@ function FileTypeIcon(props) {
         const extra = detail.length - shown.length;
         const skillCatalog = ref.producer === "skill-catalog" && shown.length > 0;
         const content = [
-          h("span", { className: "dsov-tile", key: "tile" }, ref.kind === "file" ? h(FileTypeIcon, { path: ref.label, size: 18 }) : h(RefIcon, { kind: ref.kind, size: 14 })),
+          h("span", { className: "dsov-tile", key: "tile" }, refTile(ref)),
           h(
             "span",
             { className: "dsov-rowText", key: "text" },
@@ -3822,7 +4495,7 @@ function FileTypeIcon(props) {
             ...content
           );
         }
-        if (ref.kind === "memory-file" && isVikingUri(ref.uri) && cfg.vikingPreview && cfg.vikingUrl !== "") {
+        if ((ref.kind === "memory-file" || ref.kind === "skill") && isVikingUri(ref.uri) && cfg.vikingPreview && cfg.vikingUrl !== "") {
           return h(
             "button",
             {
@@ -3850,13 +4523,13 @@ function FileTypeIcon(props) {
         }
         return h(
           "div",
-          { className: "dsov-row dsov-rowStatic", key: `ref-${index}`, title: ref.kind === "memory-file" && isVikingUri(ref.uri) ? ref.uri : ref.label },
+          { className: "dsov-row dsov-rowStatic", key: `ref-${index}`, title: isVikingUri(ref.uri) ? ref.uri : ref.label },
           ...content
         );
       });
-      const ubiquitousCount = summary.references.filter((ref) => ref.ubiquitous === true).length;
+      const ubiquitousCount = allRefs.filter((ref) => ref.ubiquitous === true).length;
       const typeSet = [];
-      for (const ref of summary.references) {
+      for (const ref of allRefs) {
         const kind = refDisplayType(ref);
         if (kind !== "" && typeSet.indexOf(kind) === -1) typeSet.push(kind);
       }
@@ -3892,7 +4565,7 @@ function FileTypeIcon(props) {
           badge: filtered.length > 0 ? String(filtered.length) : undefined,
           empty: hideCommon && ubiquitousCount > 0 && scoped.length === 0 ? t("references.onlyCommon") : t("references.empty"),
           action:
-            summary.references.length > 1
+            allRefs.length > 1
               ? h(
                   "div",
                   { className: "dsov-refControls" },
@@ -3954,19 +4627,47 @@ function FileTypeIcon(props) {
     }
 
     /** Left-hand stat pills on the scope row: duration, tool calls, commands, files, failures. */
-    function StatsBar({ stats, t }) {
+    function StatsBar({ stats, t, canTimeline, timelineOpen, scrubbing, onToggleTimeline, prevJump, onPrevTurn }) {
       if (!isRecord(stats)) return null;
       const duration = typeof stats.durationMs === "number" ? stats.durationMs : 0;
       const toolCalls = typeof stats.toolCalls === "number" ? stats.toolCalls : 0;
       const commands = typeof stats.commands === "number" ? stats.commands : 0;
       const files = typeof stats.files === "number" ? stats.files : 0;
       const errors = typeof stats.errors === "number" ? stats.errors : 0;
-      if (duration === 0 && toolCalls === 0) return null;
+      /* scrubbed to 0s: every pill is zero and the bar would vanish — keep it
+         alive with the "previous turn" jump instead */
+      const jumpBtn =
+        Number.isFinite(prevJump) && typeof onPrevTurn === "function"
+          ? h(
+              "button",
+              { type: "button", className: "dsov-stat dsov-statBtn dsov-prevTurn", key: "prevTurn", title: t("timeline.prevTurnTitle", { n: prevJump }), onClick: onPrevTurn },
+              `\u2039 ${t("timeline.prevTurn")}`
+            )
+          : null;
+      if (duration === 0 && toolCalls === 0) return jumpBtn === null ? null : h("div", { className: "dsov-stats" }, jumpBtn);
       const pill = (key, text, title, tone) => h("span", { className: "dsov-stat", key, title, ...(tone === undefined ? {} : { "data-tone": tone }) }, text);
+      const scrubable = canTimeline === true && typeof onToggleTimeline === "function";
       return h(
         "div",
         { className: "dsov-stats" },
-        duration > 0 ? pill("duration", t("stats.duration", { v: formatDuration(duration) }), t("stats.duration.title")) : null,
+        jumpBtn,
+        duration > 0
+          ? scrubable
+            ? h(
+                "button",
+                {
+                  type: "button",
+                  className: "dsov-stat dsov-statBtn",
+                  key: "duration",
+                  title: t("stats.duration.timeline"),
+                  "data-active": timelineOpen === true ? "true" : undefined,
+                  "data-scrub": scrubbing === true ? "true" : undefined,
+                  onClick: onToggleTimeline,
+                },
+                t("stats.duration", { v: formatDuration(duration) })
+              )
+            : pill("duration", t("stats.duration", { v: formatDuration(duration) }), t("stats.duration.title"))
+          : null,
         pill("tools", t("stats.tools", { n: toolCalls }), t("stats.tools.title")),
         commands > 0 ? pill("commands", t("stats.commands", { n: commands }), t("stats.commands.title")) : null,
         files > 0 ? pill("files", t("stats.files", { n: files }), t("stats.files.title")) : null,
@@ -3976,6 +4677,9 @@ function FileTypeIcon(props) {
 
     function OverviewContent({ binding, t, variant }) {
       const [selection, setSelection] = React.useState("latest");
+      /* timeline scrubbing: a null asOf always means "live/latest state" */
+      const [asOf, setAsOf] = React.useState(null);
+      const [timelineOpen, setTimelineOpen] = React.useState(false);
       const sessionWaiting = useSessionWaiting(binding ? binding.sessionId : undefined);
       /* Follow quick-nav linkage clicks issued after this instance mounted. */
       const navRev = useNavScopeRev();
@@ -3984,6 +4688,11 @@ function FileTypeIcon(props) {
         if (navScopeStore.rev === mountNavRev.current) return;
         if (typeof navScopeStore.selection === "string") setSelection(navScopeStore.selection);
       }, [navRev]);
+      React.useEffect(() => {
+        /* new scope: back to live, but keep the timeline row open so a
+           "上一轮" jump lands ready to drag in the previous turn */
+        setAsOf(null);
+      }, [selection]);
       const summary = useSummary(binding, selection);
       useBackfill(binding, summary.hasMore);
       const goal = useGoal(binding);
@@ -4012,7 +4721,101 @@ function FileTypeIcon(props) {
             h("option", { value: "all", key: "all" }, t("scope.all"))
           )
         : null;
-      const statsBar = cfg.showStats !== false ? h(StatsBar, { stats: summary.stats, t }) : null;
+      /* while scrubbing, the stats pills recompute from the steps that already happened */
+      const viewStats = React.useMemo(() => {
+        if (asOf === null || typeof summary.turnStart !== "number") return summary.stats;
+        const list = (Array.isArray(summary.stepsAll) ? summary.stepsAll : []).filter((step) => isRecord(step) && (step.time || 0) <= asOf);
+        return {
+          ...summary.stats,
+          durationMs: Math.max(0, asOf - summary.turnStart),
+          toolCalls: list.length,
+          commands: list.filter((step) => step.name === "bash").length,
+          errors: list.filter((step) => step.error === true && (step.endTime || step.time || 0) <= asOf).length,
+        };
+      }, [asOf, summary]);
+      const canTimeline = typeof summary.turnStart === "number" && typeof summary.turnEnd === "number" && summary.turnEnd > summary.turnStart;
+      /* at the 0s point nothing has happened yet in this turn: offer a jump to
+         the previous turn, rendered inside the (otherwise empty) stats bar */
+      const turnNums = Array.isArray(summary.turns) ? summary.turns.filter((value) => Number.isFinite(value)) : [];
+      let prevTurn = null;
+      if (scopeTurn !== null) {
+        const oldest = turnNums.length > 0 ? turnNums[0] : 1;
+        if (scopeTurn - 1 >= oldest) prevTurn = scopeTurn - 1;
+      } else if (scope === "latest" && turnNums.length >= 2) {
+        prevTurn = turnNums[turnNums.length - 2];
+      }
+      const statsBar =
+        cfg.showStats !== false
+          ? h(StatsBar, {
+              stats: viewStats,
+              t,
+              canTimeline,
+              timelineOpen,
+              scrubbing: asOf !== null,
+              prevJump: asOf !== null && asOf <= summary.turnStart ? prevTurn : null,
+              onPrevTurn: () => {
+                setSelection(`turn:${prevTurn}`);
+                setAsOf(null);
+                setTimelineOpen(true);
+              },
+              onToggleTimeline: () => {
+                setTimelineOpen((open) => {
+                  if (open) setAsOf(null);
+                  return !open;
+                });
+              },
+            })
+          : null;
+      const timelineTotal = canTimeline ? summary.turnEnd - summary.turnStart : 0;
+      const timelineValue = asOf === null ? summary.turnEnd : Math.min(Math.max(asOf, summary.turnStart), summary.turnEnd);
+      const timelinePct = timelineTotal > 0 ? ((timelineValue - summary.turnStart) / timelineTotal) * 100 : 100;
+      const timelineBubble = asOf === null ? t("timeline.live") : `${formatElapsed(asOf - summary.turnStart)} · ${formatTime(asOf)}`;
+      const timelineRow =
+        timelineOpen && canTimeline
+          ? h(
+              "div",
+              { className: "dsov-timeline" },
+              /* fixed-width label: the scope's total duration never changes while scrubbing */
+              h("span", { className: "dsov-timelineLabel" }, t("stats.duration", { v: formatDuration(timelineTotal) })),
+              h(
+                "div",
+                { className: "dsov-timelineTrack" },
+                h("input", {
+                  type: "range",
+                  className: "dsov-timelineSlider",
+                  min: summary.turnStart,
+                  max: summary.turnEnd,
+                  step: Math.max(1, Math.floor(timelineTotal / 1000)),
+                  value: timelineValue,
+                  title: timelineBubble,
+                  onChange: (event) => {
+                    const next = Number(event.target.value);
+                    setAsOf(next >= summary.turnEnd ? null : next);
+                  },
+                }),
+                h("span", { className: "dsov-timelineBubble", style: { left: `${timelinePct}%` } }, timelineBubble)
+              ),
+              h(
+                "button",
+                { type: "button", className: "dsov-moreSteps", title: t("timeline.reset"), disabled: asOf === null, onClick: () => setAsOf(null) },
+                t("timeline.reset")
+              ),
+              h(
+                "button",
+                {
+                  type: "button",
+                  className: "dsov-moreSteps",
+                  title: t("timeline.close"),
+                  "aria-label": t("timeline.close"),
+                  onClick: () => {
+                    setTimelineOpen(false);
+                    setAsOf(null);
+                  },
+                },
+                "\u00d7"
+              )
+            )
+          : null;
       const hasStats = cfg.showStats !== false && isRecord(summary.stats) && (summary.stats.durationMs > 0 || summary.stats.toolCalls > 0);
       const barPresent = variant === "panel" ? scopeSelect !== null || hasStats : !(scopeSelect === null && cfg.placement === "conversation" && !hasStats);
       /* toggle data-stuck on the sticky wrapper: background only shows while pinned */
@@ -4069,7 +4872,8 @@ function FileTypeIcon(props) {
                   { className: "dsov-turnbar" },
                   statsBar !== null ? h("div", { className: "dsov-turnbarScroll" }, statsBar) : null,
                   scopeSelect !== null ? h("div", { className: "dsov-turnbarFixed" }, scopeSelect) : null
-                )
+                ),
+                timelineRow
               )
             : null
           : scopeSelect === null && cfg.placement === "conversation" && !hasStats
@@ -4094,26 +4898,40 @@ function FileTypeIcon(props) {
                           t("action.openInSidebar")
                         )
                   )
-                )
+                ),
+                timelineRow
               ),
         summary.hasMore ? h("div", { className: "dsov-loading" }, t("state.loadingHistory")) : null,
-        cfg.showProgress ? h(ProgressSection, { summary, goal, t, waiting: sessionWaiting, cfg }) : null,
-        cfg.showArtifacts ? h(ArtifactsSection, { summary, t, binding, stats }) : null,
-        cfg.showReferences ? h(ReferencesSection, { summary, t, sessionId }) : null
+        cfg.showProgress ? h(ProgressSection, { summary, goal, t, waiting: sessionWaiting && asOf === null, cfg, asOf }) : null,
+        cfg.showArtifacts ? h(ArtifactsSection, { summary, t, binding, stats, asOf }) : null,
+        cfg.showReferences ? h(ReferencesSection, { summary, t, sessionId, asOf }) : null
       );
     }
 
     class OverviewBoundary extends React.Component {
       constructor(props) {
         super(props);
-        this.state = { failed: false };
+        this.state = { failed: false, message: "" };
       }
-      static getDerivedStateFromError() {
-        return { failed: true };
+      static getDerivedStateFromError(error) {
+        return { failed: true, message: error && typeof error.message === "string" ? error.message : String(error) };
+      }
+      componentDidCatch(error, info) {
+        /* surface the real cause: in the console and inside the fallback panel */
+        try {
+          console.error("[dsh-conversation-overview] overview render failed:", error, info && info.componentStack);
+        } catch {
+          /* console is best-effort */
+        }
       }
       render() {
         if (this.state.failed) {
-          return h("div", { className: this.props.variant === "panel" ? "dsov-panel" : "dsov-view" }, h("div", { className: "dsov-empty" }, translate("state.error")));
+          return h(
+            "div",
+            { className: this.props.variant === "panel" ? "dsov-panel" : "dsov-view" },
+            h("div", { className: "dsov-empty" }, translate("state.error")),
+            this.state.message !== "" ? h("pre", { className: "dsov-renderErr" }, this.state.message) : null
+          );
         }
         return this.props.children;
       }
@@ -4635,6 +5453,9 @@ function FileTypeIcon(props) {
         group(
           t("settings.interaction"),
           h(SettingSelect, { label: t("settings.timeMode"), value: cfg.timeMode, options: timeOptions, onPick: (id) => set("timeMode", id) }),
+          note(t("settings.timeModeNote")),
+          boolRow(t("settings.stepAnchors"), "stepAnchors"),
+          note(t("settings.stepAnchorsNote")),
           boolRow(t("settings.todoPromptRow"), "todoPrompt"),
           cfg.todoPrompt
             ? h(SettingTextarea, {
@@ -4681,6 +5502,7 @@ function FileTypeIcon(props) {
         ),
         group(
           t("settings.feedbackGroup"),
+          h(VersionRow, { t }),
           h(
             "a",
             { className: "dsov-set-link", href: FEEDBACK_URL, target: "_blank", rel: "noreferrer", title: FEEDBACK_URL },
@@ -4783,6 +5605,12 @@ function FileTypeIcon(props) {
 .dsov-member[data-expandable=false]{cursor:default}
 .dsov-member[data-expandable=false]:hover{background:transparent}
 .dsov-stepChevron{flex:none;margin-right:-2px}
+.dsov-compactIcon{color:var(--dsw-alias-label-secondary)}
+.dsov-todoIconSlot{position:relative;flex:none;display:inline-flex;margin-top:2px}
+.dsov-todoIconSlot .dsov-todoIcon{margin-top:0}
+.dsov-todoChevron{position:absolute;inset:0;display:inline-flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .12s ease}
+.dsov-todo[data-expandable=true]:hover .dsov-todoChevron,.dsov-todo[data-expandable=true][data-open=true] .dsov-todoChevron{opacity:1;pointer-events:auto}
+.dsov-todo[data-expandable=true]:hover .dsov-todoIconSlot .dsov-todoIcon,.dsov-todo[data-expandable=true][data-open=true] .dsov-todoIconSlot .dsov-todoIcon{visibility:hidden}
 .dsov-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:6px 8px;margin:0 -8px;border-radius:10px;border:none;background:transparent;cursor:pointer;font:inherit;color:inherit;box-sizing:content-box}
 .dsov-row:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent)}
 .dsov-rowStatic{cursor:default}
@@ -4875,6 +5703,32 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 .dsov-stats{display:flex;align-items:center;gap:5px;margin-right:auto;flex:none}
 .dsov-stat{flex:none;font-size:10.5px;line-height:18px;padding:0 8px;border-radius:999px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);white-space:nowrap;font-variant-numeric:tabular-nums}
 .dsov-stat[data-tone=err]{color:var(--dsw-alias-state-error-primary,#ff453a);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#ff453a) 10%,transparent)}
+.dsov-statBtn{cursor:pointer;border:none;margin:0;font-family:inherit;transition:color .15s ease,background-color .15s ease}
+.dsov-statBtn:hover{color:var(--dsw-alias-label-primary)}
+.dsov-statBtn[data-active=true]{color:var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 8%,transparent)}
+.dsov-statBtn[data-scrub=true]{color:var(--dsw-alias-brand-primary)}
+.dsov-timeline{display:flex;align-items:center;gap:8px;margin-top:6px}
+.dsov-timelineLabel{flex:none;font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-secondary);white-space:nowrap;font-variant-numeric:tabular-nums}
+.dsov-prevTurn{color:var(--dsw-alias-brand-primary,#247bbf)}
+.dsov-timelineTrack{position:relative;flex:1 1 auto;min-width:0;display:flex;align-items:center}
+.dsov-timelineSlider{flex:1 1 auto;min-width:0;height:18px;margin:0;cursor:pointer;accent-color:var(--dsw-alias-brand-primary)}
+.dsov-timelineBubble{position:absolute;bottom:19px;left:0;transform:translateX(-50%);z-index:6;padding:1px 7px;border-radius:6px;background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-primary);font-size:10.5px;line-height:16px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .12s ease;font-variant-numeric:tabular-nums}
+.dsov-timelineTrack:hover .dsov-timelineBubble,.dsov-timelineSlider:focus-visible+.dsov-timelineBubble{opacity:1}
+.dsov-moreSteps[disabled]{opacity:.45;cursor:default;pointer-events:none}
+.dsov-newVer{display:inline-flex;align-items:center;flex:none;padding:1px 8px;border-radius:999px;font-size:11px;line-height:18px;text-decoration:none;white-space:nowrap;color:var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 10%,transparent);border:.5px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 40%,transparent)}
+.dsov-newVer:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 18%,transparent)}
+.dsov-set-ver{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dsw-alias-label-secondary);padding:3px 0}
+.dsov-fileMenu{position:fixed;z-index:80;min-width:190px;max-width:260px;max-height:320px;overflow-y:auto;padding:4px;border-radius:9px;background:var(--dsw-alias-bg-layer-1);border:.5px solid var(--dsw-alias-border-l1);box-shadow:0 10px 30px rgba(0,0,0,.30)}
+.dsov-fileMenuItem{display:flex;align-items:center;gap:7px;width:100%;padding:5px 8px;border:none;margin:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:12px;line-height:18px;text-align:left;cursor:pointer}
+.dsov-fileMenuItem:hover{background:var(--dsw-alias-bg-layer-2)}
+.dsov-fileMenuIcon{flex:none;width:16px;height:16px;border-radius:4px;object-fit:contain;background:var(--dsw-alias-bg-layer-2)}
+.dsov-fileMenuName{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsov-fileMenuTag{flex:none;font-size:10px;line-height:14px;padding:0 5px;border-radius:999px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2)}
+.dsov-fileMenuHead{padding:5px 8px 3px;font-size:10.5px;color:var(--dsw-alias-label-secondary)}
+.dsov-fileMenuSep{height:1px;margin:4px 6px;background:var(--dsw-alias-border-l1)}
+.dsov-fileMenuHint{padding:5px 8px;font-size:11.5px;color:var(--dsw-alias-label-secondary)}
+.dsov-fileMenuErr{padding:5px 8px;font-size:11px;color:var(--dsw-alias-state-error-primary,#ff453a)}
+.dsov-renderErr{margin:8px 12px 0;padding:6px 8px;border-radius:6px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-state-error-primary,#ff453a);font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;text-align:left;max-height:140px;overflow:auto}
 .dsov-turnSelect{flex:none;max-width:150px;height:24px;padding:0 22px 0 9px;border:.5px solid var(--dsw-alias-border-l2);border-radius:12px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 12px) 10px,calc(100% - 8px) 10px;background-size:4px 4px,4px 4px;background-repeat:no-repeat}
 .dsov-turnSelect:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3,var(--dsw-alias-border-l2))}
 @keyframes dsov-spin{to{transform:rotate(360deg)}}
@@ -5229,6 +6083,24 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
       ctx.effect(
         () =>
           ctx.slots.inject(
+            "plugins.detail.badge",
+            () =>
+              ctx.slots.register(
+                {
+                  name: "plugins.detail.badge",
+                  id: "dsov-new-version",
+                  order: 100,
+                  locale: NS,
+                },
+                NewVersionBadge
+              )
+          ),
+        "conversation-overview: new version badge"
+      );
+
+      ctx.effect(
+        () =>
+          ctx.slots.inject(
             "plugins.row.config",
             () =>
               ctx.slots.register(
@@ -5271,6 +6143,10 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
       foldEvent,
       foldEntry,
       buildState,
+      planTodoAttachments,
+      vikingLabel,
+      vikingRefKind,
+      vikingIsDir,
       normalizeSelection,
       vikingParentUri,
       rememberContextPreview,
@@ -5291,6 +6167,15 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
       setFormConfig,
       setOverlayConfig,
       clearOverlayConfig,
+      compareVersions,
+      ProgressSection,
+      ArtifactsSection,
+      ReferencesSection,
+      StatsBar,
+      ArtifactFileMenu,
+      OverviewGlyph,
+      OverviewContent,
+      OverviewBoundary,
       SettingsForm,
       SettingsSection,
       vikingName,
