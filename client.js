@@ -313,6 +313,10 @@ window.__ModuleLoader__.load({
       "stats.files.title": "修改文件数",
       "stats.errors": "失败 {n}",
       "stats.errors.title": "失败的工具调用次数",
+      "stats.errors.popTitle": "点击查看失败详情",
+      "stats.errors.list": "失败详情（{n}）",
+      "stats.errors.truncated": "仅列出步骤窗口内的失败",
+      "stats.errors.close": "关闭",
       "reference.types": "类型",
       "reference.types.title": "按类型筛选",
       "reference.types.all": "全部类型",
@@ -490,6 +494,10 @@ window.__ModuleLoader__.load({
       "stats.files.title": "Files changed",
       "stats.errors": "{n} failed",
       "stats.errors.title": "Failed tool calls",
+      "stats.errors.popTitle": "Click for failure details",
+      "stats.errors.list": "Failure details ({n})",
+      "stats.errors.truncated": "Only failures within the step window are listed",
+      "stats.errors.close": "Close",
       "reference.types": "Types",
       "reference.types.title": "Filter by type",
       "reference.types.all": "All types",
@@ -1933,11 +1941,14 @@ window.__ModuleLoader__.load({
       touch(folder);
     }
 
-    function markStepDone(folder, callId, time, failed) {
+    function markStepDone(folder, callId, time, failed, errText) {
       const step = folder.stepByCall.get(callId);
       if (step === undefined) return;
       step.done = true;
-      if (failed === true) step.error = true;
+      if (failed === true) {
+        step.error = true;
+        if (typeof errText === "string" && errText.trim() !== "") step.err = errText.trim().slice(0, 400);
+      }
       if (typeof time === "number") step.endTime = time;
       touch(folder);
     }
@@ -2053,7 +2064,7 @@ window.__ModuleLoader__.load({
           if (approvalStep !== undefined && outcome !== "" && typeof approvalStep.detail === "string" && !approvalStep.detail.includes(outcome)) {
             approvalStep.detail = approvalStep.detail === "" ? outcome : `${approvalStep.detail} · ${outcome}`;
           }
-          markStepDone(folder, `approval-${data.id}`, event.time, /denied|reject/i.test(outcome));
+          markStepDone(folder, `approval-${data.id}`, event.time, /denied|reject/i.test(outcome), outcome);
           return;
         }
         case "workspace/changes": {
@@ -2176,7 +2187,7 @@ window.__ModuleLoader__.load({
           const source = message.source;
           const callId = isRecord(source) && typeof source.callId === "string" ? source.callId : undefined;
           if (callId === undefined) return;
-          markStepDone(folder, callId, event.time, message.isError === true);
+          markStepDone(folder, callId, event.time, message.isError === true, message.isError === true ? textOf(message.content) : undefined);
           if (message.isError === true) {
             folder.stats.errors += 1;
             const errorBucket = folder.byTurn.get(folder.currentTurn);
@@ -4627,7 +4638,34 @@ function FileTypeIcon(props) {
     }
 
     /** Left-hand stat pills on the scope row: duration, tool calls, commands, files, failures. */
-    function StatsBar({ stats, t, canTimeline, timelineOpen, scrubbing, onToggleTimeline, prevJump, onPrevTurn }) {
+    function StatsBar({ stats, t, canTimeline, timelineOpen, scrubbing, onToggleTimeline, prevJump, onPrevTurn, failedSteps }) {
+      /* failure details popover: hooks must run before any early return */
+      const failed = Array.isArray(failedSteps) ? failedSteps.filter((step) => isRecord(step)) : [];
+      /* fixed-position popover: the toolbar wrappers clip absolutely positioned
+         children (overflow hidden/auto), so anchor to the viewport instead */
+      const [errPop, setErrPop] = React.useState(null);
+      const errOpen = isRecord(errPop);
+      const errRef = React.useRef(null);
+      React.useEffect(() => {
+        if (!errOpen) return undefined;
+        const close = () => setErrPop(null);
+        const onDown = (event) => {
+          if (errRef.current && !errRef.current.contains(event.target)) close();
+        };
+        const onKey = (event) => {
+          if (event.key === "Escape") close();
+        };
+        document.addEventListener("mousedown", onDown);
+        document.addEventListener("keydown", onKey);
+        window.addEventListener("scroll", close, true);
+        window.addEventListener("resize", close);
+        return () => {
+          document.removeEventListener("mousedown", onDown);
+          document.removeEventListener("keydown", onKey);
+          window.removeEventListener("scroll", close, true);
+          window.removeEventListener("resize", close);
+        };
+      }, [errOpen]);
       if (!isRecord(stats)) return null;
       const duration = typeof stats.durationMs === "number" ? stats.durationMs : 0;
       const toolCalls = typeof stats.toolCalls === "number" ? stats.toolCalls : 0;
@@ -4671,7 +4709,71 @@ function FileTypeIcon(props) {
         pill("tools", t("stats.tools", { n: toolCalls }), t("stats.tools.title")),
         commands > 0 ? pill("commands", t("stats.commands", { n: commands }), t("stats.commands.title")) : null,
         files > 0 ? pill("files", t("stats.files", { n: files }), t("stats.files.title")) : null,
-        errors > 0 ? pill("errors", t("stats.errors", { n: errors }), t("stats.errors.title"), "err") : null
+        errors > 0
+          ? h(
+              "span",
+              { className: "dsov-statWrap", key: "errors", ref: errRef },
+              h(
+                "button",
+                {
+                  type: "button",
+                  className: "dsov-stat dsov-statBtn",
+                  "data-tone": "err",
+                  "data-active": errOpen ? "true" : undefined,
+                  disabled: failed.length === 0,
+                  title: failed.length > 0 ? t("stats.errors.popTitle") : t("stats.errors.title"),
+                  onClick:
+                    failed.length > 0
+                      ? (event) => {
+                          if (errOpen) {
+                            setErrPop(null);
+                            return;
+                          }
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          setErrPop({
+                            top: Math.min(rect.bottom + 5, Math.max(8, window.innerHeight - 292)),
+                            right: Math.max(8, window.innerWidth - rect.right),
+                          });
+                        }
+                      : undefined,
+                },
+                t("stats.errors", { n: errors })
+              ),
+              errOpen && failed.length > 0
+                ? h(
+                    "div",
+                    { className: "dsov-errPop", style: { top: `${errPop.top}px`, right: `${errPop.right}px` } },
+                    h(
+                      "div",
+                      { className: "dsov-errPopHead" },
+                      h("span", null, t("stats.errors.list", { n: failed.length }), errors > failed.length ? h("span", { className: "dsov-errPopHint" }, t("stats.errors.truncated")) : null),
+                      h("button", { type: "button", className: "dsov-errPopClose", title: t("stats.errors.close"), onClick: () => setErrPop(null) }, "\u00d7")
+                    ),
+                    ...failed
+                      .slice()
+                      .reverse()
+                      .map((step, index) =>
+                        h(
+                          "div",
+                          { className: "dsov-errPopRow", key: typeof step.callId === "string" && step.callId !== "" ? step.callId : `err-${index}`, title: typeof step.full === "string" && step.full !== "" ? step.full : step.detail },
+                          h(
+                            "div",
+                            { className: "dsov-errPopTop" },
+                            h(
+                              "span",
+                              { className: "dsov-errPopName" },
+                              step.name === "compact-checkpoint" ? t("step.compact") : step.name === "approval" ? t("step.approval") : typeof step.name === "string" ? step.name : ""
+                            ),
+                            h("span", { className: "dsov-errPopTime" }, typeof step.timeText === "string" ? step.timeText : "")
+                          ),
+                          step.detail ? h("div", { className: "dsov-errPopDetail" }, step.detail) : null,
+                          step.err ? h("div", { className: "dsov-errPopMsg" }, step.err) : null
+                        )
+                      )
+                  )
+                : null
+            )
+          : null
       );
     }
 
@@ -4734,6 +4836,15 @@ function FileTypeIcon(props) {
         };
       }, [asOf, summary]);
       const canTimeline = typeof summary.turnStart === "number" && typeof summary.turnEnd === "number" && summary.turnEnd > summary.turnStart;
+      /* the errors pill drills into these: failed steps of the scope, honoring the scrub point */
+      const failedSteps = React.useMemo(() => {
+        const list = Array.isArray(summary.stepsAll) ? summary.stepsAll : [];
+        const cut = asOf === null ? Number.POSITIVE_INFINITY : asOf;
+        return list
+          .filter((step) => isRecord(step) && step.error === true && (step.endTime || step.time || 0) <= cut)
+          .slice(-50)
+          .map((step) => ({ ...step, timeText: formatTime(step.time, cfg.timeMode, summary.turnStart) }));
+      }, [summary, asOf, cfg]);
       /* at the 0s point nothing has happened yet in this turn: offer a jump to
          the previous turn, rendered inside the (otherwise empty) stats bar */
       const turnNums = Array.isArray(summary.turns) ? summary.turns.filter((value) => Number.isFinite(value)) : [];
@@ -4752,6 +4863,7 @@ function FileTypeIcon(props) {
               canTimeline,
               timelineOpen,
               scrubbing: asOf !== null,
+              failedSteps,
               prevJump: asOf !== null && asOf <= summary.turnStart ? prevTurn : null,
               onPrevTurn: () => {
                 setSelection(`turn:${prevTurn}`);
@@ -5728,6 +5840,20 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 .dsov-fileMenuSep{height:1px;margin:4px 6px;background:var(--dsw-alias-border-l1)}
 .dsov-fileMenuHint{padding:5px 8px;font-size:11.5px;color:var(--dsw-alias-label-secondary)}
 .dsov-fileMenuErr{padding:5px 8px;font-size:11px;color:var(--dsw-alias-state-error-primary,#ff453a)}
+.dsov-statWrap{position:relative;display:inline-flex}
+.dsov-statBtn[disabled]{cursor:default}
+.dsov-errPop{position:fixed;z-index:80;width:min(360px,78vw);max-height:280px;overflow-y:auto;padding:4px;border-radius:8px;background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l1);box-shadow:0 8px 22px rgba(0,0,0,.20)}
+.dsov-errPopHead{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:2px 4px 4px;font-size:11px;color:var(--dsw-alias-label-secondary)}
+.dsov-errPopHint{margin-left:6px;font-size:10px;color:var(--dsw-alias-label-tertiary)}
+.dsov-errPopClose{border:0;background:none;cursor:pointer;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1;padding:2px 5px;border-radius:4px}
+.dsov-errPopClose:hover{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary)}
+.dsov-errPopRow{padding:4px 6px;border-radius:6px;font-size:11px;line-height:1.5}
+.dsov-errPopRow:hover{background:var(--dsw-alias-bg-layer-3)}
+.dsov-errPopTop{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.dsov-errPopName{font-weight:600;color:var(--dsw-alias-label-primary)}
+.dsov-errPopTime{color:var(--dsw-alias-label-tertiary);font-size:10px;white-space:nowrap}
+.dsov-errPopDetail{color:var(--dsw-alias-label-secondary);word-break:break-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dsov-errPopMsg{margin-top:2px;color:var(--dsw-alias-state-error-primary,#ff453a);white-space:pre-wrap;word-break:break-all;font-size:10.5px;max-height:76px;overflow-y:auto}
 .dsov-renderErr{margin:8px 12px 0;padding:6px 8px;border-radius:6px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-state-error-primary,#ff453a);font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;text-align:left;max-height:140px;overflow:auto}
 .dsov-turnSelect{flex:none;max-width:150px;height:24px;padding:0 22px 0 9px;border:.5px solid var(--dsw-alias-border-l2);border-radius:12px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 12px) 10px,calc(100% - 8px) 10px;background-size:4px 4px,4px 4px;background-repeat:no-repeat}
 .dsov-turnSelect:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3,var(--dsw-alias-border-l2))}

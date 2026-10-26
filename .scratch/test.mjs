@@ -260,6 +260,26 @@ assert.equal(T.normalizeConfig({ stepAnchors: true }).stepAnchors, true, "stepAn
 assert.ok(T.compareVersions("v1.2.0", "1.1.0") > 0, "newer release detected");
 assert.equal(T.compareVersions("1.1.0", "v1.1.0"), 0, "same version equal");
 assert.ok(T.compareVersions("1.0.9", "1.1.0") < 0, "older release not flagged");
+
+/* failed steps keep a short error excerpt for the stats-bar drill-down */
+{
+  const errFolder = T.createFolder();
+  const call = { type: "tool/call", seq: 2, time: 200, data: { callId: "e1", name: "bash", arguments: JSON.stringify({ command: "npm publish" }) } };
+  const result = { type: "tool/result", seq: 3, time: 260, data: { message: { source: { callId: "e1" }, isError: true, content: [{ type: "text", text: "npm ERR! 403 Forbidden" }] } } };
+  const okCall = { type: "tool/call", seq: 4, time: 300, data: { callId: "e2", name: "write", arguments: JSON.stringify({ file_path: "/w/a.txt", content: "x" }) } };
+  const okResult = { type: "tool/result", seq: 5, time: 320, data: { message: { source: { callId: "e2" }, content: [{ type: "text", text: "ok" }] } } };
+  T.foldEntry(errFolder, { type: "durable", event: { type: "turn/start", seq: 1, time: 100, data: { turn: 1 } } });
+  for (const event of [call, result, okCall, okResult]) T.foldEntry(errFolder, { type: "durable", event });
+  errFolder.changed = false;
+  const errState = T.buildState(errFolder, { hasMore: false, entries: [] }, 0, "all");
+  const failedStep = errState.stepsAll.find((step) => step.callId === "e1");
+  const okStep = errState.stepsAll.find((step) => step.callId === "e2");
+  assert.equal(failedStep.error, true, "failed step flagged");
+  assert.ok(String(failedStep.err).includes("403 Forbidden"), "failure excerpt captured");
+  assert.equal(okStep.err, undefined, "success keeps no excerpt");
+}
+
+
 assert.equal(T.normalizeConfig({}).stepAnchors, false, "stepAnchors defaults off");
 assert.equal(T.normalizeConfig({ todoPromptTemplate: "重跑 {index}: {content}\n保留换行" }).todoPromptTemplate, "重跑 {index}: {content}\n保留换行");
 assert.equal(T.normalizeConfig({ todoPromptTemplate: 42 }).todoPromptTemplate, "");
