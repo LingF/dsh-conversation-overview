@@ -1,6 +1,6 @@
 {
   "name": "dsh-conversation-overview",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "description": "DeepSeek Harness (DSH) plugin: an Overview tab beside Chat/Trajectory plus a right-sidebar page summarizing session progress (goal, todos, key steps), artifacts, and references, with per-turn scoping, OpenViking memory preview, and quick-nav linkage.",
   "keywords": [
