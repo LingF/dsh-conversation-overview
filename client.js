@@ -5662,7 +5662,7 @@ function FileTypeIcon(props) {
 .dsov-headAction{flex:none;display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:8px;border:.5px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
 .dsov-headAction:hover{color:var(--dsw-alias-brand-primary);border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 45%,transparent);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 8%,transparent)}
 .dsov-empty{font-size:12.5px;line-height:1.6;color:var(--dsw-alias-label-secondary);padding:4px 2px}
-.dsov-secBody{max-height:320px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;margin:0 -12px 0 -8px;padding:0 12px 0 8px}
+.dsov-secBody{max-height:320px;overflow-y:auto;overflow-x:hidden;margin:0 -12px 0 -8px;padding:0 12px 0 8px}
 .dsov-section[data-full=true] .dsov-secBody{max-height:none;overflow:visible;margin:0;padding:0}
 .dsov-loading{font-size:12px;color:var(--dsw-alias-label-secondary)}
 .dsov-goal{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--dsw-alias-label-primary);padding:2px}
