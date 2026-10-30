@@ -1565,20 +1565,23 @@ window.__ModuleLoader__.load({
     function openArtifact(binding, artifact, stats) {
       const sessionId = binding ? binding.sessionId : undefined;
       if (artifact.kind === "conclusion") {
+        /* The plugin's own tab is restorable: its body is mirrored into localStorage,
+           while the host's plan-review page keeps its payload in tab params only and
+           turns into the expired "计划" page after a reload. */
+        if (typeof artifact.previewKey === "string" && artifact.previewKey !== "" && openContextPreview(artifact.previewKey)) return;
         const entry = typeof artifact.previewKey === "string" ? readContextPreview(artifact.previewKey) : null;
         const docKey = `conclusion:${typeof artifact.turn === "number" ? artifact.turn : artifact.previewKey}`;
-        if (openNativeDocument(sessionId, docKey, artifact.title, entry === null ? undefined : entry.text)) return;
-        if (typeof artifact.previewKey === "string" && artifact.previewKey !== "") openContextPreview(artifact.previewKey);
+        openNativeDocument(sessionId, docKey, artifact.title, entry === null ? undefined : entry.text);
         return;
       }
       if (artifact.plan === true) {
         if (openNativePlan(sessionId, artifact.planCallId)) return;
         /* host plan viewer unavailable (plugin disabled, no sidebar): the document
            page over the same snapshot, then the plugin's own tab */
+        if (typeof artifact.previewKey === "string" && artifact.previewKey !== "" && openContextPreview(artifact.previewKey)) return;
         const entry = typeof artifact.previewKey === "string" ? readContextPreview(artifact.previewKey) : null;
         const docKey = `plan:${typeof artifact.planCallId === "string" && artifact.planCallId !== "" ? artifact.planCallId : artifact.previewKey}`;
-        if (openNativeDocument(sessionId, docKey, entry !== null ? entry.title : artifact.planTitle, entry === null ? undefined : entry.text)) return;
-        if (typeof artifact.previewKey === "string" && artifact.previewKey !== "") openContextPreview(artifact.previewKey);
+        openNativeDocument(sessionId, docKey, entry !== null ? entry.title : artifact.planTitle, entry === null ? undefined : entry.text);
         return;
       }
       if (typeof artifact.path === "string" && artifact.path.startsWith("viking://")) {
@@ -1852,7 +1855,12 @@ window.__ModuleLoader__.load({
     function rememberContextPreview(sessionId, refKey, title, text, kind) {
       if (typeof sessionId !== "string" || sessionId === "" || typeof text !== "string" || text === "") return undefined;
       const globalKey = `${sessionId}|${refKey}`;
-      contextPreviews.set(globalKey, { title: typeof title === "string" && title !== "" ? title : refKey, text: text.length > CONTEXT_TEXT_LIMIT ? `${text.slice(0, CONTEXT_TEXT_LIMIT)}\n…` : text, ...(typeof kind === "string" && kind !== "" ? { kind } : {}) });
+      const entry = { title: typeof title === "string" && title !== "" ? title : refKey, text: text.length > CONTEXT_TEXT_LIMIT ? `${text.slice(0, CONTEXT_TEXT_LIMIT)}\n…` : text, ...(typeof kind === "string" && kind !== "" ? { kind } : {}) };
+      contextPreviews.set(globalKey, entry);
+      /* Documents (turn conclusion, plan snapshot) open as tabs the host restores
+         after a reload, and their body lives only here — mirror them into
+         localStorage so a refreshed tab does not render the "unavailable" state. */
+      if (entry.kind === "conclusion" || entry.kind === "plan") persistDocPreview(globalKey, entry);
       while (contextPreviews.size > CONTEXT_PREVIEW_LIMIT) {
         const oldest = contextPreviews.keys().next();
         if (oldest.done === true) break;
@@ -1861,9 +1869,43 @@ window.__ModuleLoader__.load({
       return globalKey;
     }
 
+    const DOC_PREVIEW_STORE_KEY = "dsh.conversationOverview.docPreviews";
+    const DOC_PREVIEW_STORE_LIMIT = 8;
+    const DOC_PREVIEW_TEXT_LIMIT = 20000;
+
+    function readDocPreviewStore() {
+      try {
+        const raw = window.localStorage.getItem(DOC_PREVIEW_STORE_KEY);
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : null;
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter((item) => Array.isArray(item) && typeof item[0] === "string" && isRecord(item[1]));
+      } catch {
+        return [];
+      }
+    }
+
+    function persistDocPreview(globalKey, entry) {
+      try {
+        const kept = readDocPreviewStore().filter((item) => item[0] !== globalKey);
+        const text = entry.text.length > DOC_PREVIEW_TEXT_LIMIT ? `${entry.text.slice(0, DOC_PREVIEW_TEXT_LIMIT)}\n…` : entry.text;
+        kept.push([globalKey, { title: entry.title, text, kind: entry.kind }]);
+        window.localStorage.setItem(DOC_PREVIEW_STORE_KEY, JSON.stringify(kept.slice(-DOC_PREVIEW_STORE_LIMIT)));
+      } catch {
+        /* storage full or unavailable: the in-memory copy still serves this page */
+      }
+    }
+
     function readContextPreview(globalKey) {
       const entry = contextPreviews.get(globalKey);
-      return entry === undefined ? null : entry;
+      if (entry !== undefined) return entry;
+      /* a tab restored after a reload finds its body here */
+      const stored = readDocPreviewStore().find((item) => item[0] === globalKey);
+      if (stored === undefined) return null;
+      const revived = isRecord(stored[1]) && typeof stored[1].text === "string" ? stored[1] : null;
+      if (revived === null || revived.text === "") return null;
+      const restored = { title: typeof revived.title === "string" && revived.title !== "" ? revived.title : globalKey, text: revived.text, ...(typeof revived.kind === "string" && revived.kind !== "" ? { kind: revived.kind } : {}) };
+      contextPreviews.set(globalKey, restored);
+      return restored;
     }
 
     const CONTEXT_ADDRESS_PREFIX = "dsh-resource://overview-context/";
@@ -1895,8 +1937,13 @@ window.__ModuleLoader__.load({
     function openContextPreview(globalKey) {
       const sidebar = contextSidebar();
       if (sidebar === null) return false;
-      sidebar.openResource(contextPreviewAddress(globalKey));
-      return true;
+      try {
+        sidebar.openResource(contextPreviewAddress(globalKey));
+        return true;
+      } catch (_unavailable) {
+        /* no tab type claims our address (plugin half not mounted): caller falls back */
+        return false;
+      }
     }
 
     /* An overview can be mounted twice (inline card + sidebar tab); only the first
@@ -1908,6 +1955,27 @@ window.__ModuleLoader__.load({
       if (conclusionAutoOpened.size > 200) conclusionAutoOpened.clear();
       conclusionAutoOpened.add(key);
       return true;
+    }
+
+    /* Auto-open decision for the turn-conclusion tab. Guard shape:
+       { ready, opened:Set, sawRunning }. A conclusion only earns a tab when this
+       overview watched the session run at some point after mounting — history that
+       is replayed on mount/refresh (even when it arrives in several flushes, after
+       the first paint) must never pop a tab. Returns the key to open, else null. */
+    function conclusionAutoOpenKey(guard, conclusion, sessionId, sawRunning) {
+      if (!isRecord(guard) || !(guard.opened instanceof Set)) return null;
+      const record = isRecord(conclusion) ? conclusion : null;
+      const key = `${sessionId}|${record === null ? "" : record.turn}`;
+      if (guard.ready !== true) {
+        /* first paint: whatever already exists is history, never re-opened */
+        guard.ready = true;
+        if (record !== null) guard.opened.add(key);
+        return null;
+      }
+      if (record === null || record.ended !== true || guard.opened.has(key)) return null;
+      guard.opened.add(key);
+      if (sawRunning !== true) return null;
+      return key;
     }
 
     /* Quick-nav linkage: a click on the built-in turn rail broadcasts a scope request
@@ -2031,6 +2099,26 @@ window.__ModuleLoader__.load({
           const snapshot = source.getSnapshot();
           const status = snapshot !== null && snapshot !== undefined && typeof snapshot.get === "function" ? snapshot.get(sessionId) : undefined;
           return status !== undefined && status !== null && status.pendingInteraction !== undefined;
+        } catch {
+          return false;
+        }
+      }, [source, sessionId]);
+      return React.useSyncExternalStore(subscribe, read);
+    }
+
+    /** True while the session is actively producing a turn (running flag of sessionStatus). */
+    function useSessionRunning(sessionId) {
+      const source = readSessionStatusSource();
+      const subscribe = React.useCallback(
+        (onChange) => (source !== undefined && typeof source.subscribe === "function" ? source.subscribe(onChange) : () => {}),
+        [source]
+      );
+      const read = React.useCallback(() => {
+        if (source === undefined || typeof source.getSnapshot !== "function" || typeof sessionId !== "string") return false;
+        try {
+          const snapshot = source.getSnapshot();
+          const status = snapshot !== null && snapshot !== undefined && typeof snapshot.get === "function" ? snapshot.get(sessionId) : undefined;
+          return status !== null && status !== undefined && status.running === true;
         } catch {
           return false;
         }
@@ -5788,25 +5876,34 @@ function FileTypeIcon(props) {
       }
       const byId = isRecord(snapshot) && isRecord(snapshot.byId) ? snapshot.byId : {};
       const self = isRecord(byId[sessionId]) ? byId[sessionId] : null;
-      const parentId =
-        isRecord(address) && typeof address.parentSessionId === "string" && address.parentSessionId !== ""
-          ? address.parentSessionId
-          : self !== null && typeof self.parentId === "string" && self.parentId !== ""
-          ? self.parentId
+      const entryTitle = (entry, fallback) =>
+        entry !== null && typeof entry.title === "string" && entry.title !== ""
+          ? entry.title
+          : entry !== null && typeof entry.displayTitle === "string" && entry.displayTitle !== ""
+          ? entry.displayTitle
+          : fallback;
+      const entryParent = (entry) =>
+        typeof entry.parentSessionId === "string" && entry.parentSessionId !== ""
+          ? entry.parentSessionId
+          : typeof entry.parentId === "string" && entry.parentId !== ""
+          ? entry.parentId
           : null;
+      /* `origin: "subagent"` is the durable marker. A branched/forked conversation
+         also carries a parentSessionId (and the host even hands out a subagent
+         address for it), but it is a main session with lineage — not a subagent. */
+      const isSubagent = self !== null && self.origin === "subagent";
+      const parentId = isSubagent
+        ? (isRecord(address) && typeof address.parentSessionId === "string" && address.parentSessionId !== "" ? address.parentSessionId : entryParent(self))
+        : null;
       const parent = parentId !== null && isRecord(byId[parentId]) ? byId[parentId] : null;
       const ids = isRecord(snapshot) && Array.isArray(snapshot.ids) ? snapshot.ids : [];
       const children = [];
       const seen = new Set();
       for (const id of ids) {
         const entry = isRecord(byId[id]) ? byId[id] : null;
-        if (entry === null || entry.parentId !== sessionId) continue;
+        if (entry === null || entry.origin !== "subagent" || entryParent(entry) !== sessionId) continue;
         seen.add(id);
-        children.push({
-          id,
-          title: typeof entry.displayTitle === "string" && entry.displayTitle !== "" ? entry.displayTitle : id,
-          running: entry.running === true,
-        });
+        children.push({ id, title: entryTitle(entry, id), running: entry.running === true });
       }
       /* A child can exist in the parent's catalog projection before the list is
          projected; the catalog is the same metadata the host itself reads. */
@@ -5834,7 +5931,7 @@ function FileTypeIcon(props) {
       return {
         kind: "sub",
         parentId,
-        parentTitle: parent !== null && typeof parent.displayTitle === "string" ? parent.displayTitle : "",
+        parentTitle: parent !== null ? entryTitle(parent, "") : "",
         mode: isRecord(address) && typeof address.mode === "string" ? address.mode : "",
         children,
       };
@@ -5862,6 +5959,22 @@ function FileTypeIcon(props) {
       } catch {
         return false;
       }
+    }
+
+    /* Whether this session's visible scope actually involved subagents: agent-team
+       members, subagent-catalog records, or real subagent/spawn tool calls. A
+       context-compaction milestone also carries a teamKey, so teamKey alone is not
+       evidence (that used to announce a subagent in single-agent conversations). */
+    function subagentWorkInScope(summary) {
+      const team = isRecord(summary) && isRecord(summary.team) ? summary.team : null;
+      if (team !== null && Array.isArray(team.members) && team.members.length > 0) return true;
+      if (team !== null && Array.isArray(team.subagents) && team.subagents.length > 0) return true;
+      const steps = isRecord(summary) && Array.isArray(summary.stepsAll) ? summary.stepsAll : [];
+      return steps.some(
+        (step) =>
+          isRecord(step) &&
+          (step.name === "subagent" || step.name === "subagent_fork" || step.name === "spawn_teammate" || step.name === "team_task_create")
+      );
     }
 
     /** One compact line that says whether this overview belongs to the main agent or to
@@ -5928,6 +6041,8 @@ function FileTypeIcon(props) {
       }
       /* A plain main session with no subagents in this scope has no identity to
          announce: the badge, the child list, and the parent link are all noise. */
+      /* A finished child session from an older turn is lineage, not status: only an
+         actually running subagent (or subagent work in the visible scope) is announced. */
       if (role.children.length === 0 || hasWork === false) return null;
       return h("div", { className: "dsov-role", "data-kind": "main" }, h("span", { className: "dsov-roleBadge" }, t("role.main")), children, list);
     }
@@ -5959,22 +6074,20 @@ function FileTypeIcon(props) {
       const stats = useArtifactStats(binding, summary.changeTurns);
       const cfg = useConfig();
       const sessionId = binding ? binding.sessionId : undefined;
-      /* 本轮结论 as a document: a turn that finishes while this overview is open pops
-         its closing reply into a tab once. A turn that had already finished before the
-         overview mounted is never re-opened (no tab storm on refresh or scope switch). */
-      const conclusionGuard = React.useRef({ ready: false, opened: new Set() });
+      /* 本轮结论 as a document: only a turn this overview actually watched finish
+         pops its closing reply into a tab, once. A conclusion replayed from history
+         on mount/refresh — even when it arrives in a late flush after the first
+         paint — is never opened. */
+      const sessionRunning = useSessionRunning(binding ? binding.sessionId : undefined);
+      const conclusionGuard = React.useRef({ ready: false, opened: new Set(), sawRunning: false });
+      React.useEffect(() => {
+        if (sessionRunning === true) conclusionGuard.current.sawRunning = true;
+      }, [sessionRunning]);
       React.useEffect(() => {
         const conclusion = isRecord(summary.conclusion) ? summary.conclusion : null;
-        const key = `${sessionId}|${conclusion === null ? "" : conclusion.turn}`;
         const guard = conclusionGuard.current;
-        if (guard.ready !== true) {
-          /* first paint: a turn that had already finished is never re-opened */
-          guard.ready = true;
-          if (conclusion !== null && conclusion.ended === true) guard.opened.add(key);
-          return;
-        }
-        if (conclusion === null || conclusion.ended !== true || guard.opened.has(key)) return;
-        guard.opened.add(key);
+        const key = conclusionAutoOpenKey(guard, conclusion, sessionId, guard.sawRunning);
+        if (key === null) return;
         if (cfg.conclusionTab !== true) return;
         if (typeof conclusion.previewKey !== "string" || conclusion.previewKey === "") return;
         if (contextSidebar() === null) return;
@@ -5982,22 +6095,12 @@ function FileTypeIcon(props) {
         /* a failed open must not eat the claim: another instance may still show the tab */
         const entry = readContextPreview(conclusion.previewKey);
         const docKey = `conclusion:${typeof conclusion.turn === "number" ? conclusion.turn : conclusion.previewKey}`;
-        const opened = openNativeDocument(sessionId, docKey, conclusion.title, entry === null ? undefined : entry.text) || openContextPreview(conclusion.previewKey);
+        const opened = openContextPreview(conclusion.previewKey) || openNativeDocument(sessionId, docKey, conclusion.title, entry === null ? undefined : entry.text);
         if (!opened) conclusionAutoOpened.delete(key);
-      }, [summary, cfg.conclusionTab, sessionId]);
+      }, [summary, cfg.conclusionTab, sessionId, sessionRunning]);
       /* Agent identity only earns its row when a subagent actually took part in the
-         visible scope — otherwise the overview is a single-agent conversation. */
-      const roleWork = React.useMemo(() => {
-        const team = isRecord(summary.team) ? summary.team : null;
-        if (team !== null && (Array.isArray(team.subagents) && team.subagents.length > 0)) return true;
-        if (team !== null && (Array.isArray(team.members) && team.members.length > 0)) return true;
-        const steps = Array.isArray(summary.stepsAll) ? summary.stepsAll : [];
-        return steps.some(
-          (step) =>
-            isRecord(step) &&
-            (step.name === "subagent" || step.name === "subagent_fork" || step.name === "spawn_teammate" || step.name === "team_task_create" || typeof step.teamKey === "string")
-        );
-      }, [summary]);
+         visible scope (see subagentWorkInScope). */
+      const roleWork = React.useMemo(() => subagentWorkInScope(summary), [summary]);
       const rootClass = variant === "panel" ? "dsov-panel" : "dsov-view";
       const rootRef = React.useRef(null);
       const scope = summary.scope === selection || selection === "latest" ? summary.scope : selection;
@@ -7721,6 +7824,11 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
       changesReviewAddress,
       absPath,
       normalizeConfig,
+      conclusionAutoOpenKey,
+      subagentWorkInScope,
+      persistDocPreview,
+      readDocPreviewStore,
+      DOC_PREVIEW_STORE_KEY,
       setFormConfig,
       setOverlayConfig,
       clearOverlayConfig,

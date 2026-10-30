@@ -15,7 +15,17 @@ const clientSource = readFileSync(new URL("../client.js", import.meta.url), "utf
 
 /* ---- stub environment -------------------------------------------------- */
 let captured = null;
+const localStorageStub = (() => {
+  const store = new Map();
+  return {
+    getItem: (key) => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, String(value)),
+    removeItem: (key) => store.delete(key),
+    clear: () => store.clear(),
+  };
+})();
 globalThis.window = {
+  localStorage: localStorageStub,
   __ModuleLoader__: {
     load(registration) {
       captured = registration;
@@ -1111,23 +1121,25 @@ assert.ok(T.vikingLabel("viking://user/alice/memories/preferences/pnpm脚本运�
   T.__setRuntime(runtimeOf(sidebar));
   T.openArtifact({ sessionId }, artifact, null);
   assert.equal(calls.length, 1, "one page per click");
-  assert.ok(calls[0].address.startsWith("dsh-resource://plan-review/"), `native document page: ${calls[0].address}`);
-  assert.equal(calls[0].options.params.planReview.markdown, text, "markdown handed to the host page");
-  assert.equal(calls[0].options.params.planReview.title, "第 7 轮结论", "document title handed to the host page");
+  /* the plugin's own tab is restorable (its body is mirrored to localStorage);
+     the host plan-review page keeps its payload in tab params only, and a reload
+     would leave the expired 「计划」 page behind — so it is the fallback now. */
+  assert.ok(calls[0].address.startsWith("dsh-resource://overview-context/"), `restorable preview tab: ${calls[0].address}`);
+  assert.equal(calls[0].options, undefined, "no ephemeral payload needed: the body resolves from the store");
 
-  /* plan plugin disabled / unclaimable address: fall back to this plugin's own tab */
+  /* sidebar that cannot open tabs at all: the host document page is the last resort */
   calls.length = 0;
   const throwing = {
     openResource: (address, options) => {
       calls.push({ address, options });
-      if (address.startsWith("dsh-resource://plan-review/")) throw new Error("sidebarRight: no registered tab type claims it");
+      if (address.startsWith("dsh-resource://overview-context/")) throw new Error("sidebarRight: no registered tab type claims it");
     },
   };
   T.__setRuntime(runtimeOf(throwing));
   T.openArtifact({ sessionId }, artifact, null);
-  assert.equal(calls.length, 2, "native attempt then plugin tab");
-  assert.ok(calls[1].address.startsWith("dsh-resource://overview-context/"), `fallback tab: ${calls[1].address}`);
-  assert.equal(T.parseContextAddress(calls[1].address), previewKey, "fallback keeps the snapshot");
+  assert.equal(calls.length, 2, "plugin tab attempt then the host document page");
+  assert.ok(calls[1].address.startsWith("dsh-resource://plan-review/"), `document fallback: ${calls[1].address}`);
+  assert.equal(calls[1].options.params.planReview.markdown, text, "fallback still hands the markdown over");
 
   /* plan artifacts: the banner's own address first, the document page next */
   calls.length = 0;
@@ -1202,6 +1214,116 @@ assert.ok(T.vikingLabel("viking://user/alice/memories/preferences/pnpm脚本运�
   fold2(ev("tool/result", { message: { source: { callId: "c9" }, content: [{ type: "text", text: "ok" }] } }, 4, 130));
   fold2(ev("turn/end", { turn: 1 }, 5, 140));
   assert.equal(T.buildState(folder2, win, 0, "latest").conclusion, null, "a status line followed by tool work is not a document");
+}
+
+/* --- turn-conclusion tab: only a live-observed finish may auto-open --- */
+{
+  const guard = { ready: false, opened: new Set(), sawRunning: false };
+  const ended = (turn) => ({ turn, ended: true, previewKey: `k${turn}`, title: `T${turn}` });
+  /* first paint already carries the latest conclusion (small session, single flush) */
+  assert.equal(T.conclusionAutoOpenKey(guard, ended(3), "s1", false), null, "conclusion present at first paint never opens");
+  /* refresh with a late flush: first paint has no conclusion, it arrives afterwards */
+  const refresh = { ready: false, opened: new Set(), sawRunning: false };
+  assert.equal(T.conclusionAutoOpenKey(refresh, null, "s1", false), null, "first paint without a conclusion marks ready");
+  assert.equal(T.conclusionAutoOpenKey(refresh, ended(4), "s1", false), null, "replayed conclusion after the first paint never opens");
+  assert.equal(T.conclusionAutoOpenKey(refresh, ended(4), "s1", true), null, "the same replay stays closed even if the session runs later");
+  /* live: mounted idle on turn 4, a new turn 5 starts and finishes */
+  const live = { ready: false, opened: new Set(), sawRunning: false };
+  assert.equal(T.conclusionAutoOpenKey(live, null, "s1", false), null, "idle first paint");
+  assert.equal(T.conclusionAutoOpenKey(live, ended(5), "s1", true), "s1|5", "a watched finish opens its conclusion once");
+  assert.equal(T.conclusionAutoOpenKey(live, ended(5), "s1", true), null, "the same turn never opens twice");
+  /* a wrap-up message without turn/end is not a conclusion record at all */
+  assert.equal(T.conclusionAutoOpenKey({ ready: true, opened: new Set(), sawRunning: true }, null, "s1", true), null, "no record, no tab");
+}
+
+/* --- subagent surfaces only for live subagent work or real subagent calls --- */
+{
+  /* the reported bug: a compaction milestone carries a teamKey, which used to be
+     read as "a subagent took part" in single-agent conversations */
+  const compactOnly = { team: { members: [], tasks: [], subagents: [] }, stepsAll: [{ name: "compact", teamKey: "compact:1", milestone: true }] };
+  assert.equal(T.subagentWorkInScope(compactOnly), false, "a compaction milestone alone is not subagent work");
+  assert.equal(T.subagentWorkInScope({ team: { members: [], tasks: [], subagents: [{ childId: "c1", label: "cordis" }] }, stepsAll: [] }), true, "a subagent-catalog record keeps the identity row");
+  assert.equal(T.subagentWorkInScope({ team: { members: [], subagents: [] }, stepsAll: [{ name: "bash" }] }), false, "plain tool work is not subagent work");
+  assert.equal(T.subagentWorkInScope({ team: { members: [], subagents: [] }, stepsAll: [{ name: "subagent_fork" }] }), true, "a subagent call in scope counts");
+  assert.equal(T.subagentWorkInScope({ team: { members: [], subagents: [] }, stepsAll: [{ name: "team_task_create" }] }), true, "a team task call counts");
+  assert.equal(T.subagentWorkInScope({ team: { members: [{ id: "m1" }], subagents: [] }, stepsAll: [] }), true, "agent-team members count");
+  assert.equal(T.subagentWorkInScope(null), false, "no summary, no work");
+}
+{
+
+}
+/* --- document tabs survive a reload (conclusion / plan previews) --- */
+{
+  const key = "s-doc-restore|conclusion|9";
+  T.persistDocPreview(key, { title: "第 9 轮结论", text: "# 结论\n\n正文", kind: "conclusion" });
+  assert.equal(T.readDocPreviewStore().some((item) => item[0] === key), true, "document snapshot written to localStorage");
+  /* a fresh page has an empty in-memory map: reading the tab body must revive it */
+  const revived = T.readContextPreview(key);
+  assert.ok(revived !== null && revived.text.includes("正文") && revived.title === "第 9 轮结论", "restored tab rehydrates from localStorage");
+}
+
+/* --- session role: forks are not subagents --- */
+{
+  const mk = (byId, ids, address, catalog) => ({
+    t: (key) => key,
+    ctx: {
+      sessions: {
+        list: { getSnapshot: () => ({ ids, byId, phase: "ready", projectionsBySession: catalog === undefined ? {} : { "s-main": { values: { subagentCatalog: catalog } } } }) },
+        subagentAddress: (id) => (typeof address === "function" ? address(id) : address),
+      },
+    },
+  });
+  /* a branched/forked conversation: parentSessionId set, origin undefined — the host
+     still returns a subagent address for it, which used to show a 「子代理」 badge */
+  const forked = mk(
+    { "s-branch": { sessionId: "s-branch", parentSessionId: "s-main", origin: undefined, title: "分叉会话" }, "s-main": { sessionId: "s-main", title: "主会话" } },
+    ["s-main", "s-branch"],
+    { parentSessionId: "s-main", childSessionId: "s-branch", mode: "fork" }
+  );
+  T.__setRuntime(forked);
+  assert.equal(T.sessionRoleOf("s-branch").kind, "main", "a fork is a main session, not a subagent");
+  /* a real subagent session */
+  const sub = mk(
+    { "s-sub": { sessionId: "s-sub", parentSessionId: "s-main", origin: "subagent", title: "子任务" }, "s-main": { sessionId: "s-main", title: "主会话" } },
+    ["s-main", "s-sub"],
+    { parentSessionId: "s-main", childSessionId: "s-sub", mode: "fork" }
+  );
+  T.__setRuntime(sub);
+  const role = T.sessionRoleOf("s-sub");
+  assert.equal(role.kind, "sub", "an origin=subagent session is a subagent");
+  assert.equal(role.parentId, "s-main", "subagent keeps its parent link");
+  assert.equal(role.parentTitle, "主会话", "parent title comes from the list row title");
+  /* children: only origin=subagent rows resolve as children (not forks), catalog still counts */
+  const parent = mk(
+    {
+      "s-main": { sessionId: "s-main", title: "主会话" },
+      "s-sub": { sessionId: "s-sub", parentSessionId: "s-main", origin: "subagent", title: "子任务" },
+      "s-branch": { sessionId: "s-branch", parentSessionId: "s-main", origin: undefined, title: "分叉" },
+    },
+    ["s-main", "s-sub", "s-branch"],
+    undefined,
+    [{ id: "s-cat", title: "catalog 子代理", mode: "fork" }]
+  );
+  T.__setRuntime(parent);
+  const childIds = T.sessionRoleOf("s-main").children.map((child) => child.id).sort();
+  assert.deepEqual(childIds, ["s-cat", "s-sub"], "forked sessions are not children; catalog entries are");
+  /* live store rows use parentId + displayTitle (not parentSessionId/title) */
+  const live = mk(
+    {
+      "s-main": { id: "s-main", displayTitle: "主会话", running: false },
+      "s-sub2": { id: "s-sub2", displayTitle: "子任务二", parentId: "s-main", origin: "subagent", running: true },
+      "s-fork2": { id: "s-fork2", displayTitle: "分叉二", parentId: "s-main", running: false },
+    },
+    ["s-main", "s-sub2", "s-fork2"],
+    () => undefined
+  );
+  T.__setRuntime(live);
+  const liveRole = T.sessionRoleOf("s-sub2");
+  assert.equal(liveRole.kind, "sub", "store-row subagent (parentId + origin) classifies as subagent");
+  assert.equal(liveRole.parentTitle, "主会话", "parent displayTitle resolves");
+  assert.deepEqual(T.sessionRoleOf("s-main").children.map((child) => child.id), ["s-sub2"], "fork row is not a child; subagent row is");
+  assert.equal(T.sessionRoleOf("s-fork2").kind, "main", "fork row without origin stays main");
+  T.__setRuntime({ t: (key) => key, ctx: { sessions: { list: { getSnapshot: () => null }, subagentAddress: () => undefined } } });
 }
 
 console.log("\nALL TESTS PASSED");
