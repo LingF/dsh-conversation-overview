@@ -14,6 +14,7 @@ const Config = z.object({
   showStats: z.boolean().default(true),
   timeMode: z.union([z.const("clock"), z.const("elapsed")]).default("clock"),
   stepAnchors: z.boolean().default(false),
+  conclusionTab: z.boolean().default(true),
   placement: z.union([z.const("conversation"), z.const("sidebar"), z.const("both")]).default("both"),
   sectionFullHeight: z.boolean().default(false),
   todoPrompt: z.boolean().default(true),

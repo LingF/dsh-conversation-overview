@@ -244,6 +244,7 @@ assert.deepEqual(T.normalizeConfig(undefined), {
   quickNav: true,
   quickNavLink: true,
   vikingPreview: true,
+  conclusionTab: true,
   vikingUrl: "http://127.0.0.1:1933",
   vikingAccount: "",
   vikingUser: "",
@@ -277,6 +278,41 @@ assert.ok(T.compareVersions("1.0.9", "1.1.0") < 0, "older release not flagged");
   assert.equal(failedStep.error, true, "failed step flagged");
   assert.ok(String(failedStep.err).includes("403 Forbidden"), "failure excerpt captured");
   assert.equal(okStep.err, undefined, "success keeps no excerpt");
+}
+
+/* mermaid fences become renderable blocks; exit_plan_mode becomes a plan artifact */
+{
+  const md = T.mdToHtml("# t\n\n```mermaid\ngraph TD;A-->B;\n```\n\n```js\nx\n```");
+  assert.ok(md.includes('<div class="dsov-mermaid" data-src="graph TD;A--&gt;B;">'), "mermaid block emitted with escaped source");
+  assert.ok(md.includes('<pre class="dsov-md-pre"><code>graph TD;A--&gt;B;</code></pre>'), "mermaid fallback pre kept inside block");
+  assert.ok(md.includes('<pre class="dsov-md-pre"><code>x</code></pre>'), "non-mermaid fence unchanged");
+  assert.ok(!md.includes('data-src="x"'), "plain fence not marked as diagram");
+  assert.equal(T.planTitleOf("#  引用板块：动画 + 来源确认\n\n内容"), "引用板块：动画 + 来源确认", "plan title from heading");
+  assert.equal(T.planTitleOf("无标题计划\n步骤"), "无标题计划", "plan title from first line");
+  assert.equal(T.planTitleOf(""), "", "empty plan title");
+
+  const planFolder = T.createFolder();
+  planFolder.sessionId = "sess-plan";
+  T.foldEntry(planFolder, { type: "durable", event: { type: "turn/start", seq: 1, time: 100, data: { turn: 1 } } });
+  T.foldEntry(planFolder, { type: "durable", event: { type: "tool/call", seq: 2, time: 200, data: { callId: "p1", name: "exit_plan_mode", arguments: JSON.stringify({ plan: "# 我的计划\n\n步骤一" }) } } });
+  T.foldEntry(planFolder, { type: "durable", event: { type: "tool/result", seq: 3, time: 300, data: { message: { source: { callId: "p1" }, content: [{ type: "text", text: "Plan approved" }] } } } });
+  planFolder.changed = false;
+  const planState = T.buildState(planFolder, { hasMore: false, entries: [] }, 0, "all");
+  const plan = planState.artifacts.find((a) => a.plan === true);
+  assert.ok(plan !== undefined, "plan artifact recorded");
+  assert.equal(plan.planTitle, "我的计划", "plan title stored");
+  assert.equal(plan.path, "plan:我的计划", "plan pseudo path");
+  assert.equal(typeof plan.previewKey, "string", "plan preview captured");
+  assert.equal(plan.planCallId, "p1", "plan call id stored for the native viewer");
+
+  const badFolder = T.createFolder();
+  badFolder.sessionId = "sess-plan";
+  T.foldEntry(badFolder, { type: "durable", event: { type: "turn/start", seq: 1, time: 100, data: { turn: 1 } } });
+  T.foldEntry(badFolder, { type: "durable", event: { type: "tool/call", seq: 2, time: 200, data: { callId: "p2", name: "exit_plan_mode", arguments: JSON.stringify({ plan: "# x" }) } } });
+  T.foldEntry(badFolder, { type: "durable", event: { type: "tool/result", seq: 3, time: 300, data: { message: { source: { callId: "p2" }, isError: true, content: [{ type: "text", text: "rejected" }] } } } });
+  badFolder.changed = false;
+  const badState = T.buildState(badFolder, { hasMore: false, entries: [] }, 0, "all");
+  assert.equal(badState.artifacts.length, 0, "failed plan commits no artifact");
 }
 
 
@@ -337,24 +373,26 @@ const formProps = {
 };
 const pageForm = renderForm(formHost, formProps);
 const selects = selectButtons(pageForm);
-assert.equal(selects.length, 12, "sections + stats + time mode + milestone pin + todo prompt + quick nav + link + placement + full height + viking preview");
+assert.equal(selects.length, 13, "sections (4) + time mode + milestone pin + todo prompt + conclusion tab + quick nav + link + placement + full height + viking preview");
 assert.equal(selectLabel(selects[0]), "settings.off", "showProgress=false reflected");
 assert.equal(selectLabel(selects[1]), "settings.on", "showArtifacts=true reflected");
 assert.equal(selectLabel(selects[3]), "settings.on", "showStats defaults on");
 assert.equal(selectLabel(selects[4]), "settings.timeMode.clock", "timeMode defaults to clock time");
 assert.equal(selectLabel(selects[5]), "settings.off", "stepAnchors defaults off");
-assert.equal(selectLabel(selects[6]), "settings.on", "todoPrompt defaults on");
-assert.equal(selectLabel(selects[7]), "settings.on", "quickNav defaults on");
-assert.equal(selectLabel(selects[8]), "settings.on", "quickNavLink defaults on");
-assert.equal(selectLabel(selects[9]), "settings.placement.sidebar", "placement=sidebar reflected");
-assert.equal(selectLabel(selects[10]), "settings.off", "sectionFullHeight defaults off, grouped with placement");
+assert.equal(selectLabel(selects[6]), "settings.todoPromptOn", "todoPrompt defaults to the prompt mode");
+assert.equal(selectLabel(selects[7]), "settings.conclusionTabOn", "conclusionTab defaults to the new-tab mode");
+assert.equal(selectLabel(selects[8]), "settings.on", "quickNav defaults on");
+assert.equal(selectLabel(selects[9]), "settings.on", "quickNavLink defaults on");
+assert.equal(selectLabel(selects[10]), "settings.placement.sidebar", "placement=sidebar reflected");
+assert.equal(selectLabel(selects[11]), "settings.off", "sectionFullHeight defaults off, grouped with placement");
 const areas = collect(pageForm, (n) => n.type === "textarea" && n.props && n.props.className === "dsov-set-textarea");
 assert.equal(areas.length, 1, "prompt template textarea visible while todoPrompt is on");
+assert.equal(areas[0].props.placeholder, "settings.todoPromptPlaceholder", "the old notes became the placeholder");
 const formInputs = textInputs(pageForm);
 assert.equal(formInputs.length, 3, "viking url/account/user inputs");
 assert.deepEqual(formInputs.map((i) => i.props.value), ["http://127.0.0.1:1933", "", ""]);
 /* open the placement menu and pick an option */
-selects[9].props.onClick();
+selects[10].props.onClick();
 const opened = renderForm(formHost, formProps);
 const items = menuItems(opened);
 assert.ok(items.length >= 3, "placement menu rendered");
@@ -412,33 +450,33 @@ const localProps = { view: "page", t: keyT };
 resetHooks(true);
 const localForm = renderForm(localHost, localProps);
 const localSelects = selectButtons(localForm);
-assert.equal(localSelects.length, 12, "fallback form renders all controls");
-assert.equal(selectLabel(localSelects[9]), "settings.placement.both", "default placement shown");
-localSelects[7].props.onClick();
+assert.equal(localSelects.length, 13, "fallback form renders all controls");
+assert.equal(selectLabel(localSelects[10]), "settings.placement.both", "default placement shown");
+localSelects[8].props.onClick();
 const localOpened = renderForm(localHost, localProps);
 menuItems(localOpened).find((n) => n.children[0] === "settings.off").props.onClick();
 const afterOverlay = renderForm(localHost, localProps);
-assert.equal(selectLabel(selectButtons(afterOverlay)[7]), "settings.off", "overlay edit reflected on rerender");
+assert.equal(selectLabel(selectButtons(afterOverlay)[8]), "settings.off", "overlay edit reflected on rerender");
 /* placement through the overlay too */
-selectButtons(afterOverlay)[9].props.onClick();
+selectButtons(afterOverlay)[10].props.onClick();
 const localOpened2 = renderForm(localHost, localProps);
 menuItems(localOpened2).find((n) => n.children[0] === "settings.placement.sidebar").props.onClick();
 const afterOverlay2 = renderForm(localHost, localProps);
-assert.equal(selectLabel(selectButtons(afterOverlay2)[9]), "settings.placement.sidebar", "overlay placement edit persisted");
+assert.equal(selectLabel(selectButtons(afterOverlay2)[10]), "settings.placement.sidebar", "overlay placement edit persisted");
 assert.ok(localHost.disposals.includes("conversation.view"), "overlay placement change disposed the conversation view");
 
 /* viking preview toggle gates the text rows */
-assert.equal(selectLabel(selectButtons(afterOverlay2)[11]), "settings.on", "vikingPreview defaults on");
+assert.equal(selectLabel(selectButtons(afterOverlay2)[12]), "settings.on", "vikingPreview defaults on");
 assert.equal(textInputs(afterOverlay2).length, 3, "viking text rows visible while enabled");
-selectButtons(afterOverlay2)[11].props.onClick();
+selectButtons(afterOverlay2)[12].props.onClick();
 const vikingOpened = renderForm(localHost, localProps);
 menuItems(vikingOpened).find((n) => n.children[0] === "settings.off").props.onClick();
 const vikingOff = renderForm(localHost, localProps);
-assert.equal(selectLabel(selectButtons(vikingOff)[11]), "settings.off", "vikingPreview toggled off");
+assert.equal(selectLabel(selectButtons(vikingOff)[12]), "settings.off", "vikingPreview toggled off");
 assert.equal(textInputs(vikingOff).length, 0, "viking text rows hidden while disabled");
 const offNote = collect(vikingOff, (n) => n.type === "div" && n.props && n.props.className === "dsov-set-note" && n.children[0] === "settings.vikingOffNote");
 assert.ok(offNote.length > 0, "off note rendered");
-selectButtons(vikingOff)[11].props.onClick();
+selectButtons(vikingOff)[12].props.onClick();
 menuItems(renderForm(localHost, localProps)).find((n) => n.children[0] === "settings.on").props.onClick();
 assert.equal(textInputs(renderForm(localHost, localProps)).length, 3, "text rows return after re-enabling");
 
@@ -446,7 +484,7 @@ assert.equal(textInputs(renderForm(localHost, localProps)).length, 3, "text rows
 resetHooks(true);
 const page = expand(localHost.instance._test.SettingsSection());
 assert.ok(page && page.props.className === "dsov-settingsPage", "settings section page renders");
-assert.ok(selectButtons(page).length === 12, "settings page embeds the form");
+assert.ok(selectButtons(page).length === 13, "settings page embeds the form");
 
 /* ---- 3. fold real session events ---------------------------------------- */
 function loadEvents(file) {
@@ -501,7 +539,7 @@ for (const log of logs) {
   const memFiles = state.references.filter((r) => r.kind === "memory-file");
   for (const ref of memFiles) {
     assert.ok(typeof ref.uri === "string" && ref.uri.startsWith("viking://"), `memory-file uri: ${ref.uri}`);
-    assert.equal(ref.label, T.vikingName(ref.uri), "memory-file label is the uri name");
+    assert.equal(ref.label, T.vikingLabel(ref.uri), "memory-file label is the tree-aware name");
   }
   const vikingInjections = events.filter(
     (e) => e.type === "user/message" && e.data && e.data.source && String(e.data.source.kind || "").startsWith("plugin:openviking") && JSON.stringify(e.data.content || "").includes("viking://")
@@ -903,7 +941,17 @@ assert.equal(T.getRefSort(), "time", "sort re-arms after clearing");
 
   /* viking ref naming: skills by folder name, dirs vs files distinguished */
   assert.equal(T.vikingLabel("viking://agent/skills/xunshan-api-migration/SKILL.md"), "xunshan-api-migration", "SKILL.md reads as the skill name");
-  assert.equal(T.vikingLabel("viking://user/alice/memories/entities/软件/会议助手.md"), "会议助手", "memory files keep their own name");
+  /* labels are composed with the runtime locale prefix, so assert on the stable parts */
+assert.ok(T.vikingLabel("viking://user/alice/memories/entities/软件/会议助手.md").endsWith("会议助手"), "entity memory keeps its leaf name");
+assert.ok(T.vikingLabel("viking://user/alice/memories/entities/软件/会议助手.md").includes(" · "), "entity memory is prefixed by its tree");
+assert.ok(T.vikingLabel("viking://user/alice/peers/deepseek-workspace/memories/events/2026/10/29").endsWith("2026-10-29"), "a dated memory folder reads as its day, not its last segment");
+assert.ok(T.vikingLabel("viking://user/alice/peers/deepseek-workspace/memories/events/2026/10/29") !== "29", "the bare day number never becomes the label");
+assert.equal(
+  T.vikingLabel("viking://user/alice/memories/events/2026/10/29/四项前端优化回归验证通过.md"),
+  `四项前端优化回归验证通过 · 2026-10-29`,
+  "a dated memory file reads as its title plus the day"
+);
+assert.ok(T.vikingLabel("viking://user/alice/memories/preferences/pnpm脚本运行方式.md").endsWith("pnpm脚本运行方式"), "preferences keep their own name");
   assert.equal(T.vikingRefKind("viking://agent/skills/foo/SKILL.md"), "skill", "SKILL.md folds as a skill ref");
   assert.equal(T.vikingRefKind("viking://agent/skills/foo"), "skill", "skill folder folds as a skill ref");
   assert.equal(T.vikingRefKind("viking://user/alice/memories/x.md"), "memory-file", "memory paths stay memory-file");
@@ -1038,6 +1086,122 @@ assert.equal(T.getRefSort(), "time", "sort re-arms after clearing");
   assert.equal(all.team.tasks.length, 1, "folder level keeps the task");
   const empty = T.buildState(T.createFolder(), win, 0, "latest");
   assert.deepEqual(empty.team, { members: [], tasks: [], subagents: [] }, "empty state team shape");
+}
+
+
+/* ---- 11. 「新标签打开」落到宿主自己的 Markdown 文档页 --------------------- */
+{
+  /* the plan banner's 「打开」 reveals the plan plugin's preview page; the same
+     plugin also serves caller-supplied Markdown under a temporary address, so our
+     documents open on the same page instead of a lookalike. */
+  const calls = [];
+  const sidebar = { openResource: (address, options) => calls.push({ address, options }) };
+  const runtimeOf = (right) => ({ t: (key) => key, ctx: { sidebarRight: right, sessions: { subagentAddress: () => undefined } } });
+  const sessionId = "s-doc";
+  const text = "## 本轮结论\n\n这段完整答复应当作为文档由宿主的文档页呈现。";
+  const previewKey = T.rememberContextPreview(sessionId, "conclusion|7", "第 7 轮结论", text, "conclusion");
+  const artifact = { kind: "conclusion", title: "第 7 轮结论", turn: 7, previewKey, path: "conclusion:7" };
+
+  assert.equal(T.documentAddress(sessionId, "conclusion:7"), "dsh-resource://plan-review/s-doc/conclusion%3A7", "document address");
+  assert.ok(/^dsh-resource:\/\/plan-review\/[^/?#]+\/[^/?#]+$/.test(T.documentAddress(sessionId, "conclusion:7")), "plan plugin accepts the address shape");
+  assert.equal(T.documentAddress("", "x"), undefined, "empty session makes no address");
+  assert.equal(T.documentAddress(sessionId, ""), undefined, "empty key makes no address");
+  assert.equal(T.openNativeDocument(sessionId, "conclusion:7", "t", ""), false, "empty markdown never opens");
+
+  T.__setRuntime(runtimeOf(sidebar));
+  T.openArtifact({ sessionId }, artifact, null);
+  assert.equal(calls.length, 1, "one page per click");
+  assert.ok(calls[0].address.startsWith("dsh-resource://plan-review/"), `native document page: ${calls[0].address}`);
+  assert.equal(calls[0].options.params.planReview.markdown, text, "markdown handed to the host page");
+  assert.equal(calls[0].options.params.planReview.title, "第 7 轮结论", "document title handed to the host page");
+
+  /* plan plugin disabled / unclaimable address: fall back to this plugin's own tab */
+  calls.length = 0;
+  const throwing = {
+    openResource: (address, options) => {
+      calls.push({ address, options });
+      if (address.startsWith("dsh-resource://plan-review/")) throw new Error("sidebarRight: no registered tab type claims it");
+    },
+  };
+  T.__setRuntime(runtimeOf(throwing));
+  T.openArtifact({ sessionId }, artifact, null);
+  assert.equal(calls.length, 2, "native attempt then plugin tab");
+  assert.ok(calls[1].address.startsWith("dsh-resource://overview-context/"), `fallback tab: ${calls[1].address}`);
+  assert.equal(T.parseContextAddress(calls[1].address), previewKey, "fallback keeps the snapshot");
+
+  /* plan artifacts: the banner's own address first, the document page next */
+  calls.length = 0;
+  T.__setRuntime(runtimeOf(sidebar));
+  const planPreview = T.rememberContextPreview(sessionId, "plan|9", "P", "# P", "plan");
+  T.openArtifact({ sessionId }, { plan: true, planCallId: "call-9", planTitle: "P", previewKey: planPreview }, null);
+  assert.equal(calls.length, 1, "plan opens one page");
+  assert.equal(calls[0].address, "dsh-resource://plan/s-doc/call-9", "plan page is the banner address");
+
+  /* the fallback page copies the host Markdown document page's geometry */
+  assert.ok(clientSource.includes(".dsov-docPage{box-sizing:border-box;height:100%;padding:20px 24px 40px"), "document page padding 20/24/40");
+  assert.ok(clientSource.includes(".dsov-docDocument{min-width:0;color:var(--dsw-alias-label-primary);overflow-wrap:anywhere;font-size:14px;line-height:1.75"), "document body type");
+  assert.ok(!clientSource.includes(".dsov-docPanel{"), "old panel shell gone");
+  assert.ok(clientSource.includes('"sidebar.right.pane.tab.title"') && clientSource.includes("ContextTabTitle"), "tab chip carries the file glyph");
+  T.__setRuntime(null);
+}
+
+
+/* ---- 12. 「本轮结论」只在本轮结束后出现 -------------------------------- */
+{
+  const ev = (type, data, seq, time) => ({ type, data, seq, time });
+  const W = "/w";
+  const win = { hasMore: false, entries: [] };
+  const folder = T.createFolder();
+  folder.sessionId = "s-timing";
+  const fold = (entry) => T.foldEvent(folder, entry, W);
+  const MID = "第一段中间答复：这一轮还没结束，不应该出现在产物里的结论文档。";
+  const FINAL = "本轮收尾答复：这才是完成后应该作为结论展示的内容。";
+  fold(ev("turn/start", { turn: 1 }, 1, 100));
+  fold(ev("assistant/message", { message: { content: [{ type: "text", text: MID }] } }, 2, 110));
+  const mid = T.buildState(folder, win, 0, "latest");
+  assert.equal(mid.conclusion, null, "running turn publishes no conclusion");
+  assert.equal(mid.artifacts.length, 0, "no conclusion row while the turn runs");
+  assert.equal(T.buildState(folder, win, 0, "all").conclusion, null, "all scope also waits for the turn to end");
+  fold(ev("tool/call", { callId: "c1", name: "bash", arguments: "{}" }, 3, 120));
+  fold(ev("tool/result", { message: { source: { callId: "c1" }, content: [{ type: "text", text: "ok" }] } }, 4, 130));
+  assert.equal(T.buildState(folder, win, 0, "latest").conclusion, null, "tool work mid-turn publishes nothing");
+  fold(ev("assistant/message", { message: { content: [{ type: "text", text: FINAL }] } }, 5, 140));
+  assert.equal(T.buildState(folder, win, 0, "latest").conclusion, null, "the closing reply alone is not enough");
+  fold(ev("turn/end", { turn: 1 }, 6, 150));
+  const done = T.buildState(folder, win, 0, "latest");
+  assert.ok(done.conclusion !== null, "turn/end publishes the conclusion");
+  assert.equal(T.readContextPreview(done.conclusion.previewKey).text, FINAL, "the closing reply becomes the conclusion, not an earlier one");
+  assert.equal(done.conclusion.ended, true);
+  assert.equal(done.artifacts[0].kind, "conclusion", "conclusion leads the artifacts");
+  assert.equal(T.buildState(folder, win, 0, "all").conclusion.turn, 1, "all scope keeps the completed turn");
+  /* a later running turn must not overwrite the last completed conclusion */
+  fold(ev("turn/start", { turn: 2 }, 7, 200));
+  fold(ev("assistant/message", { message: { content: [{ type: "text", text: "第二轮刚开始的中间答复，不该顶掉第一轮的结论。" }] } }, 8, 210));
+  assert.equal(T.buildState(folder, win, 0, "latest").conclusion, null, "turn 2 has no conclusion yet");
+  assert.equal(T.buildState(folder, win, 0, "all").conclusion.turn, 1, "all scope keeps the last completed conclusion");
+  /* a short closing line is still the conclusion when nothing followed it */
+  fold(ev("tool/call", { callId: "c2", name: "bash", arguments: "{}" }, 9, 220));
+  fold(ev("tool/result", { message: { source: { callId: "c2" }, content: [{ type: "text", text: "ok" }] } }, 10, 230));
+  fold(ev("assistant/message", { message: { content: [{ type: "text", text: "完成。" }] } }, 11, 240));
+  assert.equal(T.buildState(folder, win, 0, "latest").conclusion, null, "still waiting for turn/end");
+  fold(ev("turn/end", { turn: 2 }, 12, 250));
+  const shortDone = T.buildState(folder, win, 0, "latest").conclusion;
+  assert.equal(T.readContextPreview(shortDone.previewKey).text, "完成。", "a short closing line still becomes the conclusion");
+  /* a turn that never emits turn/end never publishes anything */
+  fold(ev("turn/start", { turn: 3 }, 13, 300));
+  fold(ev("assistant/message", { message: { content: [{ type: "text", text: "第三轮还在跑，没有 turn/end 就不该有结论。" }] } }, 14, 310));
+  assert.equal(T.buildState(folder, win, 0, "latest").conclusion, null, "no turn/end, no conclusion");
+  assert.equal(T.buildState(folder, win, 0, "all").conclusion.turn, 2, "an unfinished turn never overrides the completed one");
+  /* a provisional short line (tool work came after it) is not turned into a document */
+  const folder2 = T.createFolder();
+  folder2.sessionId = "s-timing2";
+  const fold2 = (entry) => T.foldEvent(folder2, entry, W);
+  fold2(ev("turn/start", { turn: 1 }, 1, 100));
+  fold2(ev("assistant/message", { message: { content: [{ type: "text", text: "先跑一下测试。" }] } }, 2, 110));
+  fold2(ev("tool/call", { callId: "c9", name: "bash", arguments: "{}" }, 3, 120));
+  fold2(ev("tool/result", { message: { source: { callId: "c9" }, content: [{ type: "text", text: "ok" }] } }, 4, 130));
+  fold2(ev("turn/end", { turn: 1 }, 5, 140));
+  assert.equal(T.buildState(folder2, win, 0, "latest").conclusion, null, "a status line followed by tool work is not a document");
 }
 
 console.log("\nALL TESTS PASSED");

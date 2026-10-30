@@ -10,6 +10,7 @@
         showStats: true
         timeMode: clock
         stepAnchors: false
+        conclusionTab: true
         placement: both
         sectionFullHeight: false
         todoPrompt: true

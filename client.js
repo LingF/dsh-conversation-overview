@@ -5,6 +5,18 @@ window.__ModuleLoader__.load({
     const { jsx, jsxs } = require("react/jsx-runtime");
     const h = React.createElement;
 
+    /* The chat surface renders Markdown with the harness' own MarkdownText, so a
+       document opened by this plugin borrows that exact component when it can: same
+       fonts, spacing, code banners and tables as a message in the conversation. */
+    const ChatMarkdown = (() => {
+      try {
+        const primitives = require("@deepseek-ai/dsh-client-ui-primitives");
+        return primitives && typeof primitives.MarkdownText === "function" ? primitives.MarkdownText : null;
+      } catch (error) {
+        return null;
+      }
+    })();
+
     function cx(...parts) {
       return parts.filter((part) => typeof part === "string" && part.length > 0).join(" ");
     }
@@ -166,7 +178,7 @@ window.__ModuleLoader__.load({
     }
     const PLACEMENTS = ["conversation", "sidebar", "both"];
     const TIME_MODES = ["clock", "elapsed"];
-    const CONFIG_FIELDS = ["showProgress", "showArtifacts", "showReferences", "showStats", "timeMode", "stepAnchors", "placement", "sectionFullHeight", "todoPrompt", "todoPromptTemplate", "quickNav", "quickNavLink", "vikingPreview", "vikingUrl", "vikingAccount", "vikingUser"];
+    const CONFIG_FIELDS = ["showProgress", "showArtifacts", "showReferences", "showStats", "timeMode", "stepAnchors", "placement", "sectionFullHeight", "todoPrompt", "todoPromptTemplate", "quickNav", "quickNavLink", "vikingPreview", "vikingUrl", "vikingAccount", "vikingUser", "conclusionTab"];
     const VIKING_TAB_ID = "dsh-conversation-overview/viking";
     const VIKING_TAB_KIND = "viking-memory";
     const VIKING_ADDRESS_PREFIX = "dsh-resource://viking-memory/";
@@ -194,6 +206,10 @@ window.__ModuleLoader__.load({
       "progress.emptyTurn": "本轮未创建任务计划",
       "progress.recentSteps": "本轮关键步骤（最近 6 条）",
       "step.compact": "上下文压缩",
+      "step.approvalApproved": "已批准",
+      "step.approvalPending": "待审批",
+      "step.approvalGated": "含审批",
+      "step.approvalDenied": "已拒绝",
       "step.approval": "用户审批",
       "progress.allSteps": "本轮关键步骤（全部）",
       "progress.showEarlierSteps": "显示更早的步骤",
@@ -249,13 +265,22 @@ window.__ModuleLoader__.load({
       "settings.quickNavRow": "对话轮次导航条",
       "settings.quickNavLinkRow": "导航联动概览",
       "settings.quickNavNote": "对话区右侧的轮次刻度条：悬停预览该轮问答，点击跳转；开启后窄窗口下也保持显示，刻度悬停可见轮次号。",
+      "markdown.copy": "复制",
+      "markdown.copied": "已复制",
+      "markdown.code": "代码",
+      "markdown.wrap": "自动换行",
+      "markdown.unwrap": "取消换行",
+      "markdown.footnotes": "脚注",
       "settings.quickNavLinkNote": "点击导航刻度跳转对话时，已打开的概览同步切换到对应轮次。",
       "settings.interaction": "交互",
-      "settings.todoPromptRow": "双击待办生成提示词",
-      "settings.todoPromptTemplate": "提示词模板",
-      "settings.todoPromptNote": "双击进展中的待办行，把重执行提示词填入输入框。",
-      "settings.todoPromptTemplateNote": "模板留空则使用内置提示词；支持占位符 {index}（步骤序号）与 {content}（步骤内容）。",
+      "settings.todoPromptRow": "双击待办",
+      "settings.todoPromptOn": "提示词",
+      "settings.todoPromptOff": "关闭",
+      "settings.todoPromptHint": "查看内置默认模版",
+      "settings.todoPromptDefault": "内置默认模版",
+      "settings.todoPromptPlaceholder": "双击进展中的待办行，把重执行提示词填入输入框。\n模板留空则使用内置提示词；支持占位符 {index}（步骤序号）与 {content}（步骤内容）。",
       "settings.placementRow": "概览显示位置",
+      "settings.placementNote": "对话下方＝在对话里显示一块概览卡片；右侧边栏＝在右边栏单独开一页；两处＝同时显示，内容一致。",
       "settings.viking": "OpenViking 记忆预览",
       "settings.vikingEnable": "启用记忆预览",
       "settings.vikingUrl": "服务地址",
@@ -274,9 +299,11 @@ window.__ModuleLoader__.load({
       "viking.field.keywords": "关键词",
       "viking.field.source": "来源",
       "reference.sort.time": "时间",
-      "reference.sort.count": "次数",
+      "reference.sort.count": "轮次",
+      "reference.sort.hits": "次数",
       "reference.sort.time.title": "按最近引用排序",
-      "reference.sort.count.title": "按引用次数排序",
+      "reference.sort.count.title": "按出现的轮次数排序",
+      "reference.sort.hits.title": "按本轮出现次数排序",
       "reference.sort.cancel": "点击取消排序",
       "reference.previewHint": "点击预览注入的内容快照",
       "scope.label": "概览范围",
@@ -287,9 +314,25 @@ window.__ModuleLoader__.load({
       "viking.revealHint": "打开目录",
       "viking.revealFailed": "打开目录失败",
       "viking.revealRestart": "宿主路由未就绪，请重启 DSH 后重试",
+      "artifact.conclusion": "结论",
+      "artifact.conclusionTurn": "第 {n} 轮结论",
+      "artifact.conclusionChars": "{n} 字",
+      "artifact.conclusionHint": "本轮结论文档，点击在新标签中打开",
+      "context.subtitleConclusion": "本轮结论 · Markdown 文档",
+      "settings.conclusionTabRow": "本轮结束后自动打开结论",
+      "settings.conclusionTabOn": "新标签页",
+      "settings.conclusionTabOff": "关闭",
+      "settings.conclusionTabNote": "一轮对话结束时，把最终答复作为 Markdown 文档自动开在新标签里；之后仍可在「产物」里点开。",
+      "settings.conclusionTabOffNote": "不自动打开标签；本轮结论仍会出现在「产物」里，点一下即可查看。",
+      "viking.eventMemory": "记忆",
+      "viking.prefMemory": "偏好",
+      "viking.entityMemory": "实体",
+      "viking.sessionMemory": "会话记忆",
+      "viking.genericMemory": "记忆",
       "viking.revealed": "已在系统中打开",
       "context.tab": "上下文预览",
       "context.subtitle": "注入内容快照",
+      "context.subtitlePlan": "计划内容快照",
       "context.unavailable": "内容快照不可用（页面刷新后需回到对应会话重新加载）",
       "skill.revealTitle": "在系统中打开技能 {name} 的目录",
       "skill.revealFailed": "打开技能目录失败",
@@ -330,6 +373,7 @@ window.__ModuleLoader__.load({
       "goal.blocked": "受阻",
       "goal.complete": "已完成",
       "artifact.presented": "交付",
+      "artifact.plan": "计划",
       "artifact.memory": "记忆",
       "artifact.menu.reveal": "在上层文件夹中显示",
       "artifact.menu.openWith": "打开方式",
@@ -357,8 +401,32 @@ window.__ModuleLoader__.load({
       "reference.producer.agentInstructions": "Agent 指令",
       "reference.more": "+{n} 条",
       "reference.times": "×{n}",
+      "reference.turns": "{n} 轮",
+      "reference.turnsTitle": "出现在 {turns} 轮对话中，共 {times} 次",
+      "reference.timesTitle": "本轮出现 {times} 次",
       "action.openInSidebar": "在侧边栏打开",
       "state.loadingHistory": "正在载入更早的记录…",
+      "state.reloadHistory": "重新加载",
+      "state.loadingStalled": "更早的记录未能载入",
+      "state.reloadHistory.title": "重新开始载入更早的记录",
+      "intro.newTurn": "第 {n} 轮对话开始",
+      "progress.stepCommand": "命令 / 参数",
+      "progress.stepResult": "输出",
+      "progress.stepError": "错误",
+      "progress.stepDuration": "耗时 {v}",
+      "progress.stepChars": "{n} 字符",
+      "progress.stepTruncated": "输出较长，仅显示前段",
+      "progress.stepSkipped": "输出过大，未保留内容",
+      "progress.expandStep": "展开查看命令与输出",
+      "progress.collapseStep": "收起命令与输出",
+      "role.main": "主代理",
+      "role.subagent": "子代理",
+      "role.children": "子代理 {n}",
+      "role.childrenToggle": "展开/收起本会话的子代理",
+      "role.switchTitle": "切换到该子代理的概览",
+      "role.openParent": "查看主会话",
+      "role.openParentTitle": "切换到父会话的概览",
+      "role.parentPrefix": "·",
       "state.noSession": "当前没有打开的会话",
       "state.error": "概览渲染失败",
     };
@@ -375,6 +443,10 @@ window.__ModuleLoader__.load({
       "progress.emptyTurn": "No task plan was created in this turn",
       "progress.recentSteps": "Key steps in this turn (latest 6)",
       "step.compact": "Context compaction",
+      "step.approvalApproved": "Approved",
+      "step.approvalPending": "Awaiting approval",
+      "step.approvalGated": "Approval",
+      "step.approvalDenied": "Denied",
       "step.approval": "User approval",
       "progress.allSteps": "Key steps in this turn (all)",
       "progress.showEarlierSteps": "Show earlier steps",
@@ -430,13 +502,22 @@ window.__ModuleLoader__.load({
       "settings.quickNavRow": "Conversation turn rail",
       "settings.quickNavLinkRow": "Link rail with overview",
       "settings.quickNavNote": "The turn rail on the right edge of the chat: hover for a turn preview, click to jump. When enabled it stays visible in narrow windows too, and ticks show their turn number on hover.",
+      "markdown.copy": "Copy",
+      "markdown.copied": "Copied",
+      "markdown.code": "Code",
+      "markdown.wrap": "Wrap",
+      "markdown.unwrap": "No wrap",
+      "markdown.footnotes": "Footnotes",
       "settings.quickNavLinkNote": "When you click a rail tick to jump, an open overview switches to that turn as well.",
       "settings.interaction": "Interaction",
-      "settings.todoPromptRow": "Double-click todo prompt",
-      "settings.todoPromptTemplate": "Prompt template",
-      "settings.todoPromptNote": "Double-click a todo row in Progress to fill the rerun prompt into the composer.",
-      "settings.todoPromptTemplateNote": "Leave empty for the built-in prompt; placeholders: {index} (step number), {content} (step text).",
+      "settings.todoPromptRow": "Double-click todo",
+      "settings.todoPromptOn": "Prompt",
+      "settings.todoPromptOff": "Off",
+      "settings.todoPromptHint": "Show the built-in default template",
+      "settings.todoPromptDefault": "Built-in default template",
+      "settings.todoPromptPlaceholder": "Double-click a todo row in Progress to fill the rerun prompt into the composer.\nLeave empty for the built-in prompt; placeholders: {index} (step number), {content} (step text).",
       "settings.placementRow": "Show the overview in",
+      "settings.placementNote": "Below the conversation = one overview card inside the chat; Right sidebar = its own page in the right sidebar; Both = shown in both places with the same content.",
       "settings.viking": "OpenViking memory preview",
       "settings.vikingEnable": "Enable memory preview",
       "settings.vikingUrl": "Server URL",
@@ -455,9 +536,11 @@ window.__ModuleLoader__.load({
       "viking.field.keywords": "Keywords",
       "viking.field.source": "Source",
       "reference.sort.time": "Time",
-      "reference.sort.count": "Count",
+      "reference.sort.count": "Turns",
+      "reference.sort.hits": "Count",
       "reference.sort.time.title": "Sort by most recently referenced",
-      "reference.sort.count.title": "Sort by reference count",
+      "reference.sort.count.title": "Sort by how many turns mention it",
+      "reference.sort.hits.title": "Sort by mentions in this turn",
       "reference.sort.cancel": "Click again to clear",
       "reference.previewHint": "Click to preview the injected content snapshot",
       "scope.label": "Scope",
@@ -468,9 +551,25 @@ window.__ModuleLoader__.load({
       "viking.revealHint": "Open directory",
       "viking.revealFailed": "Could not open the directory",
       "viking.revealRestart": "Host route not ready — restart DSH and try again",
+      "artifact.conclusion": "Conclusion",
+      "artifact.conclusionTurn": "Turn {n} conclusion",
+      "artifact.conclusionChars": "{n} chars",
+      "artifact.conclusionHint": "This turn's closing answer as a document — click to open in a tab",
+      "context.subtitleConclusion": "Turn conclusion · Markdown document",
+      "settings.conclusionTabRow": "Open the conclusion when a turn ends",
+      "settings.conclusionTabOn": "New tab",
+      "settings.conclusionTabOff": "Off",
+      "settings.conclusionTabNote": "When a turn finishes, its closing answer opens as a Markdown tab; it also stays one click away in Artifacts.",
+      "settings.conclusionTabOffNote": "No tab opens. The turn conclusion still appears in Artifacts, one click away.",
+      "viking.eventMemory": "Memory",
+      "viking.prefMemory": "Preference",
+      "viking.entityMemory": "Entity",
+      "viking.sessionMemory": "Session memory",
+      "viking.genericMemory": "Memory",
       "viking.revealed": "Opened in the system",
       "context.tab": "Context preview",
       "context.subtitle": "Injected content snapshot",
+      "context.subtitlePlan": "Plan snapshot",
       "context.unavailable": "Content snapshot unavailable (return to the session to reload after a page refresh)",
       "skill.revealTitle": "Open the directory of skill {name} in the system",
       "skill.revealFailed": "Could not open the skill directory",
@@ -511,6 +610,7 @@ window.__ModuleLoader__.load({
       "goal.blocked": "Blocked",
       "goal.complete": "Completed",
       "artifact.presented": "Delivered",
+      "artifact.plan": "Plan",
       "artifact.memory": "Memory",
       "artifact.menu.reveal": "Show in Enclosing Folder",
       "artifact.menu.openWith": "Open With",
@@ -538,8 +638,32 @@ window.__ModuleLoader__.load({
       "reference.producer.agentInstructions": "Agent instructions",
       "reference.more": "+{n} more",
       "reference.times": "×{n}",
+      "reference.turns": "{n} turns",
+      "reference.turnsTitle": "Seen in {turns} turns · {times} mentions",
+      "reference.timesTitle": "{times} mentions in this turn",
       "action.openInSidebar": "Open in sidebar",
       "state.loadingHistory": "Loading earlier history…",
+      "state.reloadHistory": "Reload",
+      "state.loadingStalled": "Earlier history could not be loaded",
+      "state.reloadHistory.title": "Restart loading earlier history",
+      "intro.newTurn": "Turn {n} started",
+      "progress.stepCommand": "Command / args",
+      "progress.stepResult": "Output",
+      "progress.stepError": "Error",
+      "progress.stepDuration": "took {v}",
+      "progress.stepChars": "{n} chars",
+      "progress.stepTruncated": "long output, showing the head",
+      "progress.stepSkipped": "output too large, not kept",
+      "progress.expandStep": "Show command and output",
+      "progress.collapseStep": "Hide command and output",
+      "role.main": "Main agent",
+      "role.subagent": "Subagent",
+      "role.children": "Subagents {n}",
+      "role.childrenToggle": "Show/hide this session's subagents",
+      "role.switchTitle": "Switch to this subagent's overview",
+      "role.openParent": "Open main session",
+      "role.openParentTitle": "Switch to the parent session's overview",
+      "role.parentPrefix": "·",
       "state.noSession": "No session is open",
       "state.error": "Overview failed to render",
     };
@@ -577,6 +701,7 @@ window.__ModuleLoader__.load({
         quickNav: typeof source.quickNav === "boolean" ? source.quickNav : true,
         quickNavLink: typeof source.quickNavLink === "boolean" ? source.quickNavLink : true,
         vikingPreview: typeof source.vikingPreview === "boolean" ? source.vikingPreview : true,
+        conclusionTab: typeof source.conclusionTab === "boolean" ? source.conclusionTab : true,
         vikingUrl: text(source.vikingUrl, VIKING_DEFAULTS.vikingUrl).replace(/\/+$/, ""),
         vikingAccount: text(source.vikingAccount, VIKING_DEFAULTS.vikingAccount),
         vikingUser: text(source.vikingUser, VIKING_DEFAULTS.vikingUser),
@@ -1068,9 +1193,35 @@ window.__ModuleLoader__.load({
       return match !== null ? match[1] : null;
     }
 
+    /** Which memory tree a viking:// URI lives in; a locale key for its label prefix. */
+    function vikingMemoryBucket(uri) {
+      const value = String(uri);
+      if (/\/memories\/preferences(\/|$)/i.test(value)) return "viking.prefMemory";
+      if (/\/memories\/entities(\/|$)/i.test(value)) return "viking.entityMemory";
+      if (/\/memories\/sessions(\/|$)/i.test(value) || /^viking:\/\/(?:user\/[^/]+|agent)\/sessions(\/|$)/i.test(value)) return "viking.sessionMemory";
+      if (/\/memories\/events(\/|$)/i.test(value)) return "viking.eventMemory";
+      if (/\/memories(\/|$)/i.test(value)) return "viking.genericMemory";
+      return null;
+    }
+
+    /** Display name for a viking:// URI, read from the memory tree it lives in: a dated
+        folder must not show up as its last segment ("29"). */
     function vikingLabel(uri) {
-      const skill = vikingSkillName(uri);
-      return skill !== null ? skill : vikingName(uri);
+      const value = String(uri).replace(/\/+$/, "");
+      const skill = vikingSkillName(value);
+      if (skill !== null) return skill;
+      const dated = /\/memories\/events\/(\d{4})\/(\d{2})\/(\d{2})(\/.+)?$/i.exec(value);
+      if (dated !== null) {
+        const day = `${dated[1]}-${dated[2]}-${dated[3]}`;
+        const tail = typeof dated[4] === "string" ? vikingName(dated[4]) : "";
+        if (tail !== "" && tail !== day) return `${tail} · ${day}`;
+        return `${translate("viking.eventMemory")} · ${day}`;
+      }
+      const bucket = vikingMemoryBucket(value);
+      const name = vikingName(value);
+      if (bucket === null) return name;
+      /* entities keep a category folder above the leaf; show only the leaf, prefixed */
+      return `${translate(bucket)} · ${name}`;
     }
 
     /** Ref kind: anything under a skills/ root reads as SKILL, the rest stays a memory file. */
@@ -1261,6 +1412,7 @@ window.__ModuleLoader__.load({
       const lines = escapeHtml(markdown).split("\n");
       const out = [];
       let fence = null;
+      let fenceLang = "";
       let list = null; // "ul" | "ol"
       let paragraph = [];
       const closeList = () => {
@@ -1279,8 +1431,15 @@ window.__ModuleLoader__.load({
         const trimmed = line.trim();
         if (fence !== null) {
           if (trimmed.startsWith("```")) {
-            out.push(`<pre class="dsov-md-pre"><code>${fence.join("\n")}</code></pre>`);
+            const body = fence.join("\n");
+            if (fenceLang === "mermaid") {
+              /* the inner <pre> is the fallback view until mermaid replaces it */
+              out.push(`<div class="dsov-mermaid" data-src="${body}"><pre class="dsov-md-pre"><code>${body}</code></pre></div>`);
+            } else {
+              out.push(`<pre class="dsov-md-pre"><code>${body}</code></pre>`);
+            }
             fence = null;
+            fenceLang = "";
           } else {
             fence.push(line);
           }
@@ -1290,6 +1449,7 @@ window.__ModuleLoader__.load({
           flushParagraph();
           closeList();
           fence = [];
+          fenceLang = trimmed.slice(3).trim().toLowerCase();
           continue;
         }
         if (trimmed === "") {
@@ -1348,7 +1508,79 @@ window.__ModuleLoader__.load({
       return root === "" ? normalized : `${root}/${normalized}`;
     }
 
+    /** Open the host's own plan viewer — the exact page the turn-tail plan banner
+        opens. The plan plugin re-resolves the markdown from the session log by
+        tool-call id, so this address stays valid across reloads. */
+    function openNativePlan(sessionId, callId) {
+      if (typeof sessionId !== "string" || sessionId === "" || typeof callId !== "string" || callId === "") return false;
+      const sidebar = runtime && runtime.ctx ? runtime.ctx.sidebarRight : undefined;
+      if (sidebar === undefined || typeof sidebar.openResource !== "function") return false;
+      let segments;
+      try {
+        const sessions = runtime.ctx.sessions;
+        const child = sessions !== undefined && typeof sessions.subagentAddress === "function" ? sessions.subagentAddress(sessionId) : undefined;
+        segments =
+          child === undefined
+            ? [sessionId, callId]
+            : ["subagent", child.parentSessionId, child.childSessionId, child.mode, callId];
+      } catch {
+        segments = [sessionId, callId]; /* uninjected ctx access throws; plain sessions are the common case */
+      }
+      try {
+        sidebar.openResource(`dsh-resource://plan/${segments.map(encodeURIComponent).join("/")}`);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    /* The plan plugin's preview page is also the product's read-only Markdown
+       document page: besides logged plans it serves a temporary address whose
+       body renders caller-supplied Markdown through the harness' own MarkdownText
+       and chrome — the very page a turn-tail plan banner's 「打开」 reveals. Sending
+       our documents there makes 「点击打开」 the same page instead of a lookalike. */
+    const DOCUMENT_ADDRESS_PREFIX = "dsh-resource://plan-review/";
+
+    /** Address of the host document page for one caller-supplied Markdown snapshot. */
+    function documentAddress(sessionId, docKey) {
+      if (typeof sessionId !== "string" || sessionId === "" || typeof docKey !== "string" || docKey === "") return undefined;
+      return `${DOCUMENT_ADDRESS_PREFIX}${encodeURIComponent(sessionId)}/${encodeURIComponent(docKey)}`;
+    }
+
+    /** Open a Markdown snapshot on the host's own document page; false when unavailable. */
+    function openNativeDocument(sessionId, docKey, title, markdown) {
+      const address = documentAddress(sessionId, docKey);
+      if (address === undefined || typeof markdown !== "string" || markdown === "") return false;
+      const sidebar = contextSidebar();
+      if (sidebar === null) return false;
+      try {
+        sidebar.openResource(address, { params: { planReview: { markdown, title: typeof title === "string" && title !== "" ? title : docKey } } });
+        return true;
+      } catch (_unavailable) {
+        /* no tab type claims the address (plan plugin disabled): caller falls back */
+        return false;
+      }
+    }
+
     function openArtifact(binding, artifact, stats) {
+      const sessionId = binding ? binding.sessionId : undefined;
+      if (artifact.kind === "conclusion") {
+        const entry = typeof artifact.previewKey === "string" ? readContextPreview(artifact.previewKey) : null;
+        const docKey = `conclusion:${typeof artifact.turn === "number" ? artifact.turn : artifact.previewKey}`;
+        if (openNativeDocument(sessionId, docKey, artifact.title, entry === null ? undefined : entry.text)) return;
+        if (typeof artifact.previewKey === "string" && artifact.previewKey !== "") openContextPreview(artifact.previewKey);
+        return;
+      }
+      if (artifact.plan === true) {
+        if (openNativePlan(sessionId, artifact.planCallId)) return;
+        /* host plan viewer unavailable (plugin disabled, no sidebar): the document
+           page over the same snapshot, then the plugin's own tab */
+        const entry = typeof artifact.previewKey === "string" ? readContextPreview(artifact.previewKey) : null;
+        const docKey = `plan:${typeof artifact.planCallId === "string" && artifact.planCallId !== "" ? artifact.planCallId : artifact.previewKey}`;
+        if (openNativeDocument(sessionId, docKey, entry !== null ? entry.title : artifact.planTitle, entry === null ? undefined : entry.text)) return;
+        if (typeof artifact.previewKey === "string" && artifact.previewKey !== "") openContextPreview(artifact.previewKey);
+        return;
+      }
       if (typeof artifact.path === "string" && artifact.path.startsWith("viking://")) {
         openVikingPreview(artifact.path);
         return;
@@ -1524,6 +1756,7 @@ window.__ModuleLoader__.load({
         teamTasks: new Map(),
         subagents: new Map(),
         stats: createStats(),
+        conclusion: null,
         changed: false,
       };
     }
@@ -1535,7 +1768,7 @@ window.__ModuleLoader__.load({
     }
 
     function createTurnBucket() {
-      return { artifacts: new Map(), refs: new Map(), refOrder: [], changes: [], steps: [], anchors: [], members: new Map(), teamTasks: new Map(), subagents: new Map(), stats: createStats() };
+      return { artifacts: new Map(), refs: new Map(), refOrder: [], changes: [], steps: [], anchors: [], members: new Map(), teamTasks: new Map(), subagents: new Map(), stats: createStats(), conclusion: null, lastReply: null, ended: false };
     }
 
     const EMPTY_BUCKET = Object.freeze({ artifacts: new Map(), refs: new Map(), refOrder: [], changes: [], steps: [], anchors: [], members: new Map(), teamTasks: new Map(), subagents: new Map(), stats: Object.freeze(createStats()) });
@@ -1554,10 +1787,72 @@ window.__ModuleLoader__.load({
     const CONTEXT_PREVIEW_LIMIT = 400;
     const CONTEXT_TEXT_LIMIT = 120000;
 
-    function rememberContextPreview(sessionId, refKey, title, text) {
+    /* Mermaid is loaded lazily from a CDN the first time a preview contains a
+       diagram; if the load fails (offline / blocked) the raw source <pre>
+       fallback inside every .dsov-mermaid block simply stays visible. */
+    let mermaidPromise = null;
+    let mermaidSeq = 0;
+    function loadMermaid() {
+      if (mermaidPromise === null) {
+        mermaidPromise = import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")
+          .then((mod) => {
+            const mermaid = mod !== null && typeof mod === "object" && typeof mod.default === "object" ? mod.default : mod;
+            const dark = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches === true;
+            mermaid.initialize({ startOnLoad: false, theme: dark === true ? "dark" : "default", fontFamily: "inherit" });
+            return mermaid;
+          })
+          .catch((error) => {
+            mermaidPromise = null;
+            throw error;
+          });
+      }
+      return mermaidPromise;
+    }
+
+    async function renderMermaidNodes(root) {
+      if (root === null || typeof root.querySelectorAll !== "function") return;
+      const nodes = root.querySelectorAll(".dsov-mermaid[data-src]");
+      if (nodes.length === 0) return;
+      let mermaid;
+      try {
+        mermaid = await loadMermaid();
+      } catch {
+        return;
+      }
+      for (const node of nodes) {
+        if (node.getAttribute("data-rendered") === "true") continue;
+        const source = node.getAttribute("data-src") || "";
+        if (source.trim() === "") continue;
+        try {
+          mermaidSeq += 1;
+          const result = await mermaid.render(`dsov-mmd-${mermaidSeq}`, source);
+          const svg = result !== null && typeof result === "object" && typeof result.svg === "string" ? result.svg : "";
+          if (svg === "") continue;
+          node.innerHTML = svg;
+          node.setAttribute("data-rendered", "true");
+        } catch {
+          node.classList.add("dsov-mermaidFailed");
+        }
+      }
+    }
+
+    /** Markdown block that upgrades ```mermaid fences to rendered diagrams after mount. */
+    function MarkdownBody({ text }) {
+      const ref = React.useRef(null);
+      const html = React.useMemo(() => mdToHtml(typeof text === "string" ? text : ""), [text]);
+      React.useEffect(() => {
+        const node = ref.current;
+        if (node === null) return undefined;
+        const timer = setTimeout(() => renderMermaidNodes(node), 0);
+        return () => clearTimeout(timer);
+      }, [html]);
+      return h("div", { className: "dsov-md", ref, dangerouslySetInnerHTML: { __html: html } });
+    }
+
+    function rememberContextPreview(sessionId, refKey, title, text, kind) {
       if (typeof sessionId !== "string" || sessionId === "" || typeof text !== "string" || text === "") return undefined;
       const globalKey = `${sessionId}|${refKey}`;
-      contextPreviews.set(globalKey, { title: typeof title === "string" && title !== "" ? title : refKey, text: text.length > CONTEXT_TEXT_LIMIT ? `${text.slice(0, CONTEXT_TEXT_LIMIT)}\n…` : text });
+      contextPreviews.set(globalKey, { title: typeof title === "string" && title !== "" ? title : refKey, text: text.length > CONTEXT_TEXT_LIMIT ? `${text.slice(0, CONTEXT_TEXT_LIMIT)}\n…` : text, ...(typeof kind === "string" && kind !== "" ? { kind } : {}) });
       while (contextPreviews.size > CONTEXT_PREVIEW_LIMIT) {
         const oldest = contextPreviews.keys().next();
         if (oldest.done === true) break;
@@ -1587,10 +1882,32 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** The host surface that holds preview tabs; null when this context has none. */
+    function contextSidebar() {
+      try {
+        const sidebar = runtime && runtime.ctx ? runtime.ctx.sidebarRight : undefined;
+        return sidebar && typeof sidebar.openResource === "function" ? sidebar : null;
+      } catch {
+        return null;
+      }
+    }
+
     function openContextPreview(globalKey) {
-      const sidebar = runtime && runtime.ctx ? runtime.ctx.sidebarRight : undefined;
-      if (!sidebar || typeof sidebar.openResource !== "function") return;
+      const sidebar = contextSidebar();
+      if (sidebar === null) return false;
       sidebar.openResource(contextPreviewAddress(globalKey));
+      return true;
+    }
+
+    /* An overview can be mounted twice (inline card + sidebar tab); only the first
+       instance may pop the turn-conclusion tab. */
+    const conclusionAutoOpened = new Set();
+
+    function claimConclusionTab(key) {
+      if (conclusionAutoOpened.has(key)) return false;
+      if (conclusionAutoOpened.size > 200) conclusionAutoOpened.clear();
+      conclusionAutoOpened.add(key);
+      return true;
     }
 
     /* Quick-nav linkage: a click on the built-in turn rail broadcasts a scope request
@@ -1725,12 +2042,27 @@ window.__ModuleLoader__.load({
       folder.changed = true;
     }
 
+    /** First heading (or first non-empty line) of a plan markdown, trimmed for row display. */
+    function planTitleOf(text) {
+      for (const line of String(text).split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed === "") continue;
+        const heading = /^#{1,6}\s+(.*)$/.exec(trimmed);
+        return (heading ? heading[1] : trimmed).replace(/[#*`]/g, "").trim().slice(0, 80);
+      }
+      return "";
+    }
+
     function upsertArtifact(folder, bucket, path, update) {
       const existing = folder.artifacts.get(path);
       if (existing) {
         if (typeof update.description === "string" && update.description.length > 0) existing.description = update.description;
         if (update.presented) existing.presented = true;
         if (update.produced) existing.produced = true;
+        if (update.plan === true) existing.plan = true;
+        if (typeof update.planTitle === "string" && update.planTitle !== "") existing.planTitle = update.planTitle;
+        if (typeof update.previewKey === "string" && update.previewKey !== "") existing.previewKey = update.previewKey;
+        if (typeof update.planCallId === "string" && update.planCallId !== "") existing.planCallId = update.planCallId;
         if (typeof update.time === "number" && update.time > 0) existing.time = update.time;
         if (typeof update.seq === "number") existing.seq = Math.max(existing.seq, update.seq);
         const bucketExisting = bucket.artifacts.get(path);
@@ -1738,6 +2070,10 @@ window.__ModuleLoader__.load({
           if (typeof update.description === "string" && update.description.length > 0) bucketExisting.description = update.description;
           if (update.presented) bucketExisting.presented = true;
           if (update.produced) bucketExisting.produced = true;
+          if (update.plan === true) bucketExisting.plan = true;
+          if (typeof update.planTitle === "string" && update.planTitle !== "") bucketExisting.planTitle = update.planTitle;
+          if (typeof update.previewKey === "string" && update.previewKey !== "") bucketExisting.previewKey = update.previewKey;
+          if (typeof update.planCallId === "string" && update.planCallId !== "") bucketExisting.planCallId = update.planCallId;
           if (typeof update.time === "number" && update.time > 0) bucketExisting.time = update.time;
           if (typeof update.seq === "number") bucketExisting.seq = Math.max(bucketExisting.seq, update.seq);
         } else {
@@ -1751,6 +2087,10 @@ window.__ModuleLoader__.load({
         description: typeof update.description === "string" ? update.description : undefined,
         presented: update.presented === true,
         produced: update.produced === true,
+        ...(update.plan === true ? { plan: true } : {}),
+        ...(typeof update.planTitle === "string" && update.planTitle !== "" ? { planTitle: update.planTitle } : {}),
+        ...(typeof update.previewKey === "string" && update.previewKey !== "" ? { previewKey: update.previewKey } : {}),
+        ...(typeof update.planCallId === "string" && update.planCallId !== "" ? { planCallId: update.planCallId } : {}),
         time: typeof update.time === "number" ? update.time : 0,
         firstTime: typeof update.time === "number" ? update.time : 0,
         seq: typeof update.seq === "number" ? update.seq : 0,
@@ -1761,6 +2101,21 @@ window.__ModuleLoader__.load({
     }
 
     /** Record that one global ref appeared in the folder's current turn (unique, ascending). */
+    /** A turn bucket keeps its own mention count and turn list: the folder entry spans
+        every turn, while one bucket must answer "in THIS turn" for the per-turn view. */
+    function withOwnTurns(stored, folder, current) {
+      const turn = folder.currentTurn;
+      const at = isRecord(current) && typeof current.time === "number" && current.time > 0 ? current.time : 0;
+      const seq = isRecord(current) && typeof current.seq === "number" ? current.seq : null;
+      return {
+        ...stored,
+        count: 1,
+        turns: typeof turn === "number" && turn >= 1 ? [turn] : [],
+        ...(at > 0 ? { time: at, firstTime: at } : {}),
+        ...(seq === null ? {} : { seq }),
+      };
+    }
+
     function noteRefTurn(stored, folder) {
       const turn = folder.currentTurn;
       if (typeof turn !== "number" || turn < 1) return;
@@ -1782,13 +2137,14 @@ window.__ModuleLoader__.load({
         const bucketExisting = bucket.refs.get(ref.key);
         if (bucketExisting) {
           bucketExisting.count += 1;
+          noteRefTurn(bucketExisting, folder);
           if (typeof ref.time === "number" && ref.time >= bucketExisting.time) {
             bucketExisting.time = ref.time;
             bucketExisting.seq = ref.seq;
           }
           if (typeof ref.previewKey === "string") bucketExisting.previewKey = ref.previewKey;
         } else {
-          bucket.refs.set(ref.key, { ...existing });
+          bucket.refs.set(ref.key, withOwnTurns(existing, folder, ref));
           bucket.refOrder.push(ref.key);
         }
         touch(folder);
@@ -1798,7 +2154,7 @@ window.__ModuleLoader__.load({
       noteRefTurn(stored, folder);
       folder.refs.set(ref.key, stored);
       folder.refOrder.push(ref.key);
-      bucket.refs.set(ref.key, { ...stored });
+      bucket.refs.set(ref.key, withOwnTurns(stored, folder, ref));
       bucket.refOrder.push(ref.key);
       touch(folder);
     }
@@ -1918,6 +2274,26 @@ window.__ModuleLoader__.load({
       return text.length > 4000 ? text.slice(0, 4000) : text;
     }
 
+    /** Shorter assistant messages are asides (status lines, "done."), not documents. */
+    const CONCLUSION_MIN_CHARS = 32;
+    /** Chars kept per step for the expanded detail (kept small: every step carries one). */
+    const STEP_RESULT_LIMIT = 1600;
+    /** Stop collecting once a result is clearly huge; only the size is remembered. */
+    const STEP_RESULT_SKIP = 40000;
+    function stepResultOf(content) {
+      if (!Array.isArray(content)) return null;
+      let text = "";
+      let chars = 0;
+      for (const part of content) {
+        if (!isRecord(part) || part.type !== "text" || typeof part.text !== "string") continue;
+        chars += part.text.length;
+        if (chars > STEP_RESULT_SKIP) return { text: "", chars, truncated: true, skipped: true };
+        if (text.length < STEP_RESULT_LIMIT) text += part.text.slice(0, STEP_RESULT_LIMIT - text.length);
+      }
+      if (chars === 0) return null;
+      return { text, chars, truncated: chars > text.length, skipped: false };
+    }
+
     const ANCHOR_CAP = 8;
     function addStep(folder, bucket, step) {
       if (typeof step.teamKey === "string") {
@@ -1956,6 +2332,12 @@ window.__ModuleLoader__.load({
     function foldEvent(folder, event, cwd) {
       if (!isRecord(event) || typeof event.type !== "string") return;
       const data = event.data;
+      /* Tool work after a reply proves that reply was not the turn's closing word:
+         the candidate stays provisional until a fresh reply replaces it. */
+      if ((event.type === "tool/call" || event.type === "tool/result") && folder.currentTurn >= 1) {
+        const running = folder.byTurn.get(folder.currentTurn);
+        if (running !== undefined && isRecord(running.lastReply)) running.lastReply.provisional = true;
+      }
       if (typeof event.time === "number" && Number.isFinite(event.time)) {
         bumpStatTime(folder.stats, event.time);
         const statsTurn =
@@ -1972,6 +2354,45 @@ window.__ModuleLoader__.load({
           if (!isRecord(data) || typeof data.turn !== "number" || !Number.isSafeInteger(data.turn) || data.turn < 1) return;
           folder.currentTurn = data.turn;
           turnBucket(folder, data.turn);
+          touch(folder);
+          return;
+        }
+        case "assistant/message": {
+          /* A reply is only a candidate while the turn runs: 「本轮结论」 is published
+             at turn/end, so 产物 never shows a provisional document mid-turn. */
+          if (!isRecord(data) || !isAppendSurfaceEvent(event)) return;
+          /* Two shapes carry the reply: plugin-level {content} and the durable log's
+             {message:{content}}. Reading only the first left every real turn without a
+             conclusion document, so the auto-open never fired. */
+          const body = isRecord(data.message) ? data.message : data;
+          const text = (typeof body.text === "string" && body.text !== "" ? body.text : textOf(body.content)).trim();
+          if (text === "") return;
+          const turn = folder.currentTurn >= 1 ? folder.currentTurn : Number.isSafeInteger(data.turn) && data.turn >= 1 ? data.turn : 0;
+          const bucket = folder.byTurn.get(turn) ?? turnBucket(folder, folder.currentTurn);
+          bucket.lastReply = {
+            turn,
+            text,
+            seq: typeof event.seq === "number" ? event.seq : 0,
+            time: typeof event.time === "number" ? event.time : 0,
+            provisional: false,
+          };
+          touch(folder);
+          return;
+        }
+        case "turn/end": {
+          if (!isRecord(data) || typeof data.turn !== "number" || !Number.isSafeInteger(data.turn) || data.turn < 1) return;
+          const bucket = folder.byTurn.get(data.turn);
+          if (bucket === undefined) return;
+          bucket.ended = true;
+          const reply = isRecord(bucket.lastReply) ? bucket.lastReply : null;
+          /* Publish the closing reply only now that the turn is over. A provisional
+             reply (tool work followed it) still counts when it is substantive, so a
+             turn whose last action was a tool call keeps its readable document. */
+          if (reply !== null && typeof reply.text === "string" && reply.text !== "" && (reply.provisional !== true || reply.text.length >= CONCLUSION_MIN_CHARS)) {
+            const record = { turn: data.turn, text: reply.text, seq: reply.seq, time: reply.time, ended: true };
+            bucket.conclusion = record;
+            folder.conclusion = record;
+          }
           touch(folder);
           return;
         }
@@ -2048,8 +2469,13 @@ window.__ModuleLoader__.load({
           addStep(folder, approvalBucket, {
             callId: `approval-${data.id}`,
             name: "approval",
+            /* the tool call this gate blocks: the approval renders nested under it so
+               a child never appears to finish before its own parent */
+            ...(typeof data.callId === "string" && data.callId !== "" ? { parentCallId: data.callId } : {}),
             detail: toolName,
             full: typeof data.reason === "string" && data.reason !== "" ? `${toolName} · ${data.reason}` : toolName,
+            approvalTool: toolName,
+            ...(typeof data.reason === "string" && data.reason !== "" ? { approvalReason: data.reason } : {}),
             milestone: true,
             done: false,
             seq: event.seq,
@@ -2061,6 +2487,7 @@ window.__ModuleLoader__.load({
           if (!isRecord(data) || typeof data.id !== "string" || data.id === "") return;
           const outcome = typeof data.outcome === "string" ? data.outcome : "";
           const approvalStep = folder.stepByCall.get(`approval-${data.id}`);
+          if (approvalStep !== undefined && outcome !== "") approvalStep.approvalOutcome = outcome;
           if (approvalStep !== undefined && outcome !== "" && typeof approvalStep.detail === "string" && !approvalStep.detail.includes(outcome)) {
             approvalStep.detail = approvalStep.detail === "" ? outcome : `${approvalStep.detail} · ${outcome}`;
           }
@@ -2110,6 +2537,10 @@ window.__ModuleLoader__.load({
             folder.stats.files.add(producedPath);
             callBucket.stats.files.add(producedPath);
             folder.pending.set(callId, { type: "artifact", path: producedPath });
+            return;
+          }
+          if (name === "exit_plan_mode") {
+            folder.pending.set(callId, { type: "plan", callId, text: args !== null && isRecord(args) && typeof args.plan === "string" ? args.plan : "" });
             return;
           }
           if (name === "skill" && args && typeof args.name === "string" && args.name.length > 0) {
@@ -2188,6 +2619,16 @@ window.__ModuleLoader__.load({
           const callId = isRecord(source) && typeof source.callId === "string" ? source.callId : undefined;
           if (callId === undefined) return;
           markStepDone(folder, callId, event.time, message.isError === true, message.isError === true ? textOf(message.content) : undefined);
+          const resultStep = folder.stepByCall.get(callId);
+          if (resultStep !== undefined && resultStep.result === undefined) {
+            const captured = stepResultOf(message.content);
+            if (captured !== null) {
+              resultStep.result = captured.text;
+              resultStep.resultChars = captured.chars;
+              resultStep.resultTruncated = captured.truncated;
+              resultStep.resultSkipped = captured.skipped;
+            }
+          }
           if (message.isError === true) {
             folder.stats.errors += 1;
             const errorBucket = folder.byTurn.get(folder.currentTurn);
@@ -2202,6 +2643,18 @@ window.__ModuleLoader__.load({
             upsertArtifact(folder, bucket, pending.path, {
               produced: true,
               ...(typeof pending.description === "string" && pending.description !== "" ? { description: pending.description } : {}),
+              seq: event.seq,
+              time: event.time,
+            });
+          } else if (pending.type === "plan" && typeof pending.text === "string" && pending.text.trim() !== "") {
+            const planTitle = planTitleOf(pending.text);
+            const planRefKey = `plan|${typeof event.seq === "number" ? event.seq : folder.currentTurn}`;
+            const previewKey = rememberContextPreview(folder.sessionId, planRefKey, planTitle, pending.text, "plan");
+            upsertArtifact(folder, bucket, `plan:${planTitle === "" ? planRefKey : planTitle}`, {
+              plan: true,
+              ...(planTitle === "" ? {} : { planTitle }),
+              ...(previewKey === undefined ? {} : { previewKey }),
+              ...(typeof pending.callId === "string" && pending.callId !== "" ? { planCallId: pending.callId } : {}),
               seq: event.seq,
               time: event.time,
             });
@@ -2338,16 +2791,41 @@ window.__ModuleLoader__.load({
         todosTime = own !== null ? own.time : 0;
       }
       const artifacts = [...source.artifacts.values()].sort((left, right) => (right.time || right.seq) - (left.time || left.seq) || right.seq - left.seq);
+      /* 「本轮结论」: the closing reply is offered as a document, newest scope first. */
+      const rawConclusion = isRecord(source.conclusion) ? source.conclusion : null;
+      let conclusion = null;
+      if (rawConclusion !== null && typeof rawConclusion.text === "string" && rawConclusion.text !== "") {
+        const title = translate("artifact.conclusionTurn", { n: rawConclusion.turn });
+        const previewKey = rememberContextPreview(folder.sessionId, `conclusion|${rawConclusion.turn}`, title, rawConclusion.text, "conclusion");
+        conclusion = {
+          path: `conclusion:${rawConclusion.turn}`,
+          kind: "conclusion",
+          title,
+          description: "",
+          chars: rawConclusion.text.length,
+          turn: rawConclusion.turn,
+          seq: rawConclusion.seq,
+          time: rawConclusion.time,
+          ended: rawConclusion.ended === true,
+          ...(previewKey === undefined ? {} : { previewKey }),
+        };
+        artifacts.unshift(conclusion);
+      }
       /* A ref is ubiquitous when it shows up in at least two turns covering >= 60% of
          all observed turns — the per-turn OpenViking/runtime injections match this. */
       const turnCount = turns.length;
       const ubiquitousFrom = turnCount >= 2 ? Math.max(2, Math.ceil(turnCount * 0.6)) : Infinity;
       const references = [];
       for (let index = source.refOrder.length - 1; index >= 0; index -= 1) {
-        const ref = source.refs.get(source.refOrder[index]);
+        const key = source.refOrder[index];
+        const ref = source.refs.get(key);
         if (ref === undefined) continue;
         const refTurns = Array.isArray(ref.turns) ? ref.turns.length : 0;
-        references.push(refTurns > 0 ? { ...ref, refTurns, ubiquitous: refTurns >= ubiquitousFrom } : { ...ref, refTurns: 0, ubiquitous: false });
+        /* "common" is a session-wide property: a ref injected every turn stays common
+           even while the view is narrowed to one turn. */
+        const global = source === folder ? ref : folder.refs.get(key);
+        const globalTurns = global !== undefined && Array.isArray(global.turns) ? global.turns.length : refTurns;
+        references.push({ ...ref, refTurns, ubiquitous: globalTurns >= 2 && globalTurns >= ubiquitousFrom });
       }
       const st = isRecord(source.stats) ? source.stats : EMPTY_BUCKET.stats;
       const stats = {
@@ -2396,10 +2874,13 @@ window.__ModuleLoader__.load({
         turns,
         latestTurn,
         scope,
+        /* how many turns this scope spans: "all" covers the session, a turn view spans 1 */
+        scopeTurns: source === folder ? turns.length : 1,
+        conclusion,
       };
     }
 
-    const EMPTY_STATE = { todos: null, todosTime: 0, artifacts: [], references: [], steps: [], stepsAll: [], team: { members: [], tasks: [], subagents: [] }, stats: { durationMs: 0, toolCalls: 0, commands: 0, errors: 0, files: 0 }, turnStart: null, turnEnd: null, milestones: [], todoHistory: [], changeTurns: [], hasMore: false, localeRev: 0, turns: [], latestTurn: null, scope: "latest" };
+    const EMPTY_STATE = { todos: null, todosTime: 0, artifacts: [], references: [], steps: [], stepsAll: [], team: { members: [], tasks: [], subagents: [] }, stats: { durationMs: 0, toolCalls: 0, commands: 0, errors: 0, files: 0 }, turnStart: null, turnEnd: null, milestones: [], todoHistory: [], changeTurns: [], hasMore: false, localeRev: 0, turns: [], latestTurn: null, scope: "latest", scopeTurns: 1, conclusion: null };
 
     function createSummaryStore(binding) {
       const source = binding.eventSource;
@@ -2562,33 +3043,82 @@ window.__ModuleLoader__.load({
       return isRecord(goal) && typeof goal.objective === "string" ? goal : null;
     }
 
-    function useBackfill(binding, hasMore) {
+    /** Backfills older history. Returns true once several consecutive loads made no
+        progress, so the UI can surface 「重新加载」 instead of an endless spinner. */
+    function useBackfill(binding, hasMore, retryToken) {
+      const [stalled, setStalled] = React.useState(false);
       React.useEffect(() => {
+        setStalled(false);
         if (!binding || !hasMore) return undefined;
         let cancelled = false;
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        /* every host read is guarded: a throwing getSnapshot would kill the loop and
+           leave the status line up with no way back */
+        const readSnapshot = () => {
+          try {
+            const source = binding.eventSource;
+            return source !== undefined && typeof source.getSnapshot === "function" ? source.getSnapshot() : null;
+          } catch {
+            return null;
+          }
+        };
+        const sizeOf = (snapshot) => (isRecord(snapshot) && Array.isArray(snapshot.entries) ? snapshot.entries.length : 0);
+        const session = binding.session;
+        const canLoadThrough = isRecord(session) && typeof session.loadThrough === "function";
+        const canLoadOlder = isRecord(session) && typeof session.loadOlder === "function";
         const run = async () => {
-          /* Prefer the jump loader: it pages back until the window covers seq and
-             survives concurrent loaders. loadOlder() is a no-op while another load
-             is in flight, so retry until the window actually stops reporting more. */
-          for (let attempt = 0; attempt < 200 && !cancelled; attempt += 1) {
-            const snapshot = binding.eventSource.getSnapshot();
+          if (!canLoadThrough && !canLoadOlder) {
+            /* no loader at all: this can never converge, so say so instead of spinning */
+            setStalled(true);
+            return;
+          }
+          /* The jump loader pages back inside one call until the window covers the
+             target seq. Event seqs are dense and ZERO-based, so the target must be
+             0: aiming at 1 leaves baseSeq stuck at 1, and from then on the host's
+             own `baseSeq <= seq` guard makes every retry a permanent no-op. */
+          let lastSize = sizeOf(readSnapshot());
+          let noProgress = 0;
+          let usedOlder = 0;
+          let resynced = false;
+          const deadline = Date.now() + 45000;
+          for (let attempt = 0; attempt < 400 && !cancelled && Date.now() < deadline; attempt += 1) {
+            const snapshot = readSnapshot();
             if (!isRecord(snapshot) || snapshot.hasMore !== true) return;
-            const session = binding.session;
-            if (isRecord(session) && typeof session.loadThrough === "function") await session.loadThrough(1);
-            else if (isRecord(session) && typeof session.loadOlder === "function") await session.loadOlder();
-            else return;
+            try {
+              /* A no-op page means the jump loader is blocked (another loader holds
+                 the lock, or the seq target is already covered): loadOlder() is
+                 seq-free and still prepends a real page, so alternate to it. If even
+                 that stalls, rebuild the history source once. */
+              if (usedOlder < 2 || !canLoadOlder) {
+                if (canLoadThrough) await session.loadThrough(0);
+                else await session.loadOlder();
+              } else if (!resynced && typeof session.resync === "function") {
+                resynced = true;
+                await session.resync();
+              } else {
+                await session.loadOlder();
+              }
+            } catch {
+              /* a rejected page must not kill the loop; count it as no progress */
+            }
             if (cancelled) return;
-            const after = binding.eventSource.getSnapshot();
+            const after = readSnapshot();
             if (isRecord(after) && after.hasMore !== true) return;
-            await sleep(200);
+            const size = sizeOf(after);
+            const grew = size > lastSize;
+            lastSize = size;
+            noProgress = grew ? 0 : noProgress + 1;
+            usedOlder = grew ? 0 : usedOlder + 1;
+            if (noProgress === 4) setStalled(true);
+            await sleep(grew ? 60 : 200);
           }
         };
         run().catch(() => {});
         return () => {
           cancelled = true;
         };
-      }, [binding, hasMore]);
+      }, [binding, hasMore, retryToken]);
+      return stalled;
     }
 
     /** Class map mirroring the copied FileTypeIcon.module.css, renamed under dsov-ft-*. */
@@ -3319,6 +3849,49 @@ function FileTypeIcon(props) {
       ]);
     }
 
+    function IconPlan({ size = 16, className }) {
+      return svg(size, className, [
+        h("rect", { key: "a", x: 3.2, y: 2.2, width: 9.6, height: 11.6, rx: 1.5, stroke: "currentColor", fill: "none" }),
+        h("path", { key: "b", d: "M5.6 5.6h4.8M5.6 8.1h4.8M5.6 10.6h2.9", stroke: "currentColor", strokeLinecap: "round" }),
+      ]);
+    }
+
+    function IconInfo({ size = 14, className }) {
+      return svg(size, className, [
+        h("circle", { key: "a", cx: 8, cy: 8, r: 6.1, stroke: "currentColor", fill: "none" }),
+        h("path", { key: "b", d: "M8 7.2v3.9", stroke: "currentColor", strokeLinecap: "round" }),
+        h("circle", { key: "c", cx: 8, cy: 5.1, r: 0.85, fill: "currentColor" }),
+      ], "0 0 16 16");
+    }
+
+    /** Chrome copy the chat Markdown component expects (code banner, footnotes). */
+    function chatMarkdownLabels(t) {
+      return {
+        code: {
+          copyLabel: t("markdown.copy"),
+          copiedLabel: t("markdown.copied"),
+          toolbarLabels: {
+            codeLabel: t("markdown.code"),
+            wrapLabel: t("markdown.wrap"),
+            unwrapLabel: t("markdown.unwrap"),
+          },
+        },
+        footnotes: t("markdown.footnotes"),
+      };
+    }
+
+    /** Turn conclusion: a written page with a sealed tick on its corner. */
+    function IconConclusion({ size = 16, className }) {
+      return svg(size, className, [
+        h("path", { key: "a", d: "M9.2 1.6H4.3c-.85 0-1.5.65-1.5 1.5v9.8c0 .85.65 1.5 1.5 1.5h4.6", stroke: "currentColor", strokeLinejoin: "round", fill: "none", strokeWidth: 1.25 }),
+        h("path", { key: "b", d: "M9.1 1.8v3.7h3.9", stroke: "currentColor", strokeLinejoin: "round", fill: "none", strokeWidth: 1.25 }),
+        h("path", { key: "c", d: "M9.1 1.8v3.7h3.6V5.6L9.1 1.8Z", stroke: "currentColor", strokeLinejoin: "round", fill: "none", strokeWidth: 1.25 }),
+        h("path", { key: "d", d: "M5.2 7.3h4.7M5.2 9.4h3", stroke: "currentColor", strokeLinecap: "round", strokeWidth: 1.25 }),
+        h("circle", { key: "e", cx: 11.7, cy: 12.1, r: 2.55, fill: "currentColor" }),
+        h("path", { key: "f", d: "M10.5 12.1l.85.9 1.6-1.8", stroke: "#fff", strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 1.15, fill: "none" }),
+      ], "0 0 16 16");
+    }
+
     function IconSkill({ size = 16, className }) {
       return svg(size, className, [
         h("path", { key: "a", d: "M8.8 1.6 3.4 9h4l-.8 5.4L12.6 7h-4.2l.4-5.4Z", stroke: "currentColor", strokeLinejoin: "round" }),
@@ -3563,13 +4136,34 @@ function FileTypeIcon(props) {
     }
 
     /** Incoming order is newest-first; kind/count modes re-rank, breaking ties by recency. */
-    function sortReferences(refs, mode) {
+    /** Mentions of one reference: folds can count one turn twice, so this is not turn coverage. */
+    function refHitsOf(ref) {
+      return isRecord(ref) && typeof ref.count === "number" && ref.count > 0 ? ref.count : 1;
+    }
+
+    /** Distinct turns that mentioned one reference; a single turn can fold it twice. */
+    function refTurnsOf(ref) {
+      if (isRecord(ref) && typeof ref.refTurns === "number") return ref.refTurns;
+      return isRecord(ref) && Array.isArray(ref.turns) ? ref.turns.length : 0;
+    }
+
+    function sortReferences(refs, mode, multiTurn) {
       const byRecency = (left, right) => (right.time || right.seq || 0) - (left.time || left.seq || 0) || (right.seq || 0) - (left.seq || 0);
-      if (mode === "count") return refs.slice().sort((left, right) => (right.count || 1) - (left.count || 1) || byRecency(left, right));
+      if (mode === "count") {
+        if (multiTurn !== true) return refs.slice().sort((left, right) => refHitsOf(right) - refHitsOf(left) || byRecency(left, right));
+        return refs.slice().sort((left, right) => refTurnsOf(right) - refTurnsOf(left) || refHitsOf(right) - refHitsOf(left) || byRecency(left, right));
+      }
       return refs;
     }
 
-    function Section({ id, icon, title, badge, empty, action, children }) {
+    /** Alternating animation names let the CSS entrance replay without remounting
+        (a keyed remount would drop collapse/scroll state on every new turn). */
+    function sectionIntroProps(introSeq, delayMs) {
+      if (!Number.isFinite(introSeq) || introSeq <= 0) return {};
+      return { introAttr: introSeq % 2 === 0 ? "even" : "odd", introDelay: delayMs };
+    }
+
+    function Section({ id, icon, title, badge, empty, action, children, introAttr, introDelay }) {
       const [open, setOpen] = React.useState(() => collapsedSections.get(id) !== true);
       const cfg = useConfig();
       const kids = Array.isArray(children) ? children.filter((child) => child !== null && child !== undefined && child !== false) : children ? [children] : [];
@@ -3580,7 +4174,12 @@ function FileTypeIcon(props) {
       };
       return h(
         "section",
-        { className: "dsov-section", "data-full": cfg.sectionFullHeight === true ? "true" : "false" },
+        {
+          className: "dsov-section",
+          "data-full": cfg.sectionFullHeight === true ? "true" : "false",
+          "data-intro": introAttr,
+          style: typeof introDelay === "number" ? { animationDelay: `${introDelay}ms` } : undefined,
+        },
         h(
           "div",
           { className: "dsov-sectionHead" },
@@ -3626,7 +4225,7 @@ function FileTypeIcon(props) {
       complete: "success",
     };
 
-    function ProgressSection({ summary, goal, t, waiting, cfg, asOf }) {
+    function ProgressSection({ summary, goal, t, waiting, cfg, asOf, introSeq }) {
       const fmtTime = (ts) => formatTime(ts, cfg.timeMode, summary.turnStart);
       const timeTitle = (ts) => (cfg.timeMode === "elapsed" ? formatTime(ts) : undefined);
       /* timeline scrubbing: only what already happened at `asOf` is shown */
@@ -3739,14 +4338,59 @@ function FileTypeIcon(props) {
           if (!stepAt(candidate)) continue;
           const key = milestoneKeyOf(candidate);
           if (baseKeys.has(key)) continue;
+          if (typeof candidate.callId === "string" && nestedApprovalCallIds.has(candidate.callId)) continue;
           baseKeys.add(key);
           milestoneExtras.push(stepClamped(candidate));
         }
         milestoneExtras.sort((left, right) => (left.time || 0) - (right.time || 0));
       }
       const displaySteps = milestoneExtras.length > 0 ? [...milestoneExtras, ...(stepsOpen ? expandedSteps : steps)] : stepsOpen ? expandedSteps : steps;
+      /* An approval gates one tool call; render it directly under that call so a
+         child row can never look like it finished before its own parent. */
+      const approvalChildren = new Map();
+      const nestedApprovalKeys = new Set();
+      const nestedApprovalCallIds = new Set();
+      {
+        const keyByCall = new Map();
+        displaySteps.forEach((step, index) => {
+          if (typeof step.callId === "string" && step.callId !== "") keyByCall.set(step.callId, stepKeyOf(step, index));
+        });
+        displaySteps.forEach((step, index) => {
+          if (step.name !== "approval" || typeof step.parentCallId !== "string" || step.parentCallId === "") return;
+          const parentKey = keyByCall.get(step.parentCallId);
+          const ownKey = stepKeyOf(step, index);
+          if (parentKey === undefined || parentKey === ownKey) return;
+          const list = approvalChildren.get(parentKey);
+          if (list === undefined) approvalChildren.set(parentKey, [step]);
+          else list.push(step);
+          nestedApprovalKeys.add(ownKey);
+          if (typeof step.callId === "string") nestedApprovalCallIds.add(step.callId);
+        });
+      }
+      const renderSteps = nestedApprovalKeys.size === 0 ? displaySteps : displaySteps.filter((step, index) => !nestedApprovalKeys.has(stepKeyOf(step, index)));
+      /* A step the user expanded while it ran closes itself once it succeeds; a failed
+         step stays open so the error stays readable. */
+      const runningKeys = [];
+      const stepByKey = new Map();
+      renderSteps.forEach((step, index) => {
+        const key = stepKeyOf(step, index);
+        stepByKey.set(key, step);
+        if (step.done !== true && step.error !== true) runningKeys.push(key);
+      });
+      const runningSig = runningKeys.join("|");
+      const prevRunningKeys = React.useRef(new Set());
+      React.useEffect(() => {
+        const now = new Set(runningKeys);
+        for (const key of prevRunningKeys.current) {
+          if (now.has(key)) continue;
+          const step = stepByKey.get(key);
+          if (step === undefined || step.done !== true || step.error === true) continue;
+          if (overrideOf(`step:${key}`, false)) toggleKey(`step:${key}`, false);
+        }
+        prevRunningKeys.current = now;
+      }, [runningSig]);
       if (seenSteps.current === null || seenSteps.current.scope !== summary.scope) {
-        seenSteps.current = { scope: summary.scope, keys: new Set(displaySteps.map(stepKeyOf)) };
+        seenSteps.current = { scope: summary.scope, keys: new Set(renderSteps.map(stepKeyOf)) };
       }
       React.useEffect(
         () => () => {
@@ -3959,6 +4603,106 @@ function FileTypeIcon(props) {
           target.push(subRow(sub, 0));
         });
       };
+      /* What an expanded step reveals: the full command/arg text plus the result. */
+      const stepBodyOf = (step) => {
+        if (step.name === "approval") return null;
+        const command = typeof step.full === "string" ? step.full.trim() : "";
+        const rawResult = step.error === true && typeof step.err === "string" && step.err !== "" ? step.err : typeof step.result === "string" ? step.result : "";
+        const result = rawResult.trim();
+        if (command === "" && result === "") return null;
+        const duration = typeof step.endTime === "number" && typeof step.time === "number" ? Math.max(0, step.endTime - step.time) : null;
+        return {
+          command,
+          result,
+          error: step.error === true,
+          duration,
+          chars: typeof step.resultChars === "number" ? step.resultChars : null,
+          truncated: step.resultTruncated === true,
+          skipped: step.resultSkipped === true,
+        };
+      };
+      /* 审批 is part of the step it gates, not a neighbour: it leads the detail panel
+         so the gate reads before the command it unlocked, and the row carries a chip. */
+      const approvalToneOf = (child) => {
+        if (child.done !== true && child.error !== true) return "warn";
+        return /denied|reject|deny/i.test(typeof child.approvalOutcome === "string" ? child.approvalOutcome : "") ? "err" : "ok";
+      };
+      const approvalTitleOf = (approvals, tr) => {
+        const parts = [];
+        for (const child of approvals) {
+          const tool = typeof child.approvalTool === "string" && child.approvalTool !== "" ? child.approvalTool : typeof child.detail === "string" ? child.detail : "";
+          const reason = typeof child.approvalReason === "string" ? child.approvalReason : "";
+          const outcome = typeof child.approvalOutcome === "string" ? child.approvalOutcome : "";
+          const tone = approvalToneOf(child);
+          const state = tone === "warn" ? tr("step.approvalPending") : outcome;
+          const line = [tool, reason, state].filter((part) => typeof part === "string" && part !== "").join(" · ");
+          if (line !== "") parts.push(line);
+        }
+        return parts.length === 0 ? undefined : parts.join("\n");
+      };
+      const approvalBlock = (approvals) => {
+        if (!Array.isArray(approvals) || approvals.length === 0) return null;
+        return h(
+          "div",
+          { className: "dsov-stepApproval", key: "approval" },
+          approvals.map((child) => {
+            const tone = approvalToneOf(child);
+            const tool = typeof child.approvalTool === "string" && child.approvalTool !== "" ? child.approvalTool : typeof child.detail === "string" ? child.detail : "";
+            const reason = typeof child.approvalReason === "string" ? child.approvalReason : "";
+            const outcome = typeof child.approvalOutcome === "string" ? child.approvalOutcome : "";
+            const label = tone === "warn" ? t("step.approvalPending") : tone === "err" ? t("step.approvalDenied") : t("step.approvalApproved");
+            const stamp = typeof child.endTime === "number" ? child.endTime : child.time;
+            return h(
+              "div",
+              { className: "dsov-stepApprovalItem", key: typeof child.callId === "string" ? child.callId : "approval", "data-tone": tone },
+              h(
+                "div",
+                { className: "dsov-stepApprovalHead" },
+                h("span", { className: "dsov-stepApprovalIcon" }, h(IconTarget, { size: 11 })),
+                h("span", { className: "dsov-stepApprovalName" }, t("step.approval")),
+                tool !== "" ? h("span", { className: "dsov-stepApprovalTool" }, tool) : null,
+                h("span", { className: "dsov-stepApprovalBadge", "data-tone": tone }, label),
+                h("span", { className: "dsov-stepApprovalTime" }, fmtTime(stamp))
+              ),
+              reason !== "" ? h("div", { className: "dsov-stepApprovalReason" }, reason) : null,
+              outcome !== "" && tone !== "warn" ? h("div", { className: "dsov-stepApprovalOutcome" }, outcome) : null
+            );
+          })
+        );
+      };
+      const stepBodyBlock = (step, key, approvals) => {
+        const body = stepBodyOf(step);
+        const gated = approvalBlock(approvals);
+        if (body === null && gated === null) return null;
+        const meta = [];
+        if (body !== null && body.duration !== null) meta.push(t("progress.stepDuration", { v: formatElapsed(body.duration) }));
+        if (body !== null && body.chars !== null && body.chars > 0) meta.push(t("progress.stepChars", { n: body.chars }));
+        if (body !== null && body.skipped) meta.push(t("progress.stepSkipped"));
+        else if (body !== null && body.truncated) meta.push(t("progress.stepTruncated"));
+        return h(
+          "div",
+          { className: "dsov-stepBody", key: `${key}-body` },
+          gated,
+          body !== null && body.command !== ""
+            ? h(
+                "div",
+                { className: "dsov-stepBodySec" },
+                h("div", { className: "dsov-stepBodyLabel" }, t("progress.stepCommand")),
+                h("pre", { className: "dsov-stepBodyText" }, body.command)
+              )
+            : null,
+          body !== null && body.result !== ""
+            ? h(
+                "div",
+                { className: "dsov-stepBodySec" },
+                h("div", { className: "dsov-stepBodyLabel" }, t(body.error ? "progress.stepError" : "progress.stepResult")),
+                h("pre", { className: body.error ? "dsov-stepBodyText dsov-stepBodyErr" : "dsov-stepBodyText" }, body.result)
+              )
+            : null,
+          meta.length > 0 ? h("div", { className: "dsov-stepBodyMeta" }, meta.join(" · ")) : null
+        );
+      };
+
       const stepRow = (step, key, extraProps, isWaiting) => {
         const stepRunning = step.done !== true;
         const failed = step.error === true;
@@ -3967,35 +4711,16 @@ function FileTypeIcon(props) {
         const full = typeof step.full === "string" && step.full !== "" ? step.full : detail !== "" ? detail : typeof step.name === "string" ? step.name : "";
         const flash = stepFlash !== null && isRecord(stepFlash) && stepFlash.key === (typeof step.callId === "string" && step.callId !== "" ? step.callId : `${step.name}|${step.seq}`) ? stepFlash.state : null;
         const attached = stepAttachments.get(key);
-        const expandable = Array.isArray(attached) && attached.length > 0;
-        const open = expandable ? overrideOf(`step:${key}`, attached.some((item) => item.unfinished)) : false;
-        const row = h(
-          "div",
-          {
-            className: "dsov-step",
-            key,
-            "data-error": failed ? "true" : "false",
-            "data-waiting": waitingRow ? "true" : "false",
-            "data-flash": flash === "ok" ? "ok" : flash === "err" ? "err" : undefined,
-            title: full === "" ? undefined : waitingRow ? `${t("progress.waiting")} · ${full}` : full,
-            ...(extraProps === undefined ? {} : extraProps),
-            onClick: () => onStepClick(step),
-          },
-          expandable
-            ? h(
-                "span",
-                {
-                  className: "dsov-chevron dsov-stepChevron",
-                  "data-open": open ? "true" : "false",
-                  title: t(open ? "progress.collapseTeam" : "progress.expandTeam"),
-                  onClick: (event) => {
-                    event.stopPropagation();
-                    toggleKey(`step:${key}`, !open);
-                  },
-                },
-                h(IconChevron, { size: 11 })
-              )
-            : null,
+        const approvals = approvalChildren.get(key);
+        const dying = extraProps !== undefined && extraProps["data-exit"] === "true";
+        const body = dying ? null : stepBodyOf(step);
+        const gated = !dying && Array.isArray(approvals) && approvals.length > 0;
+        const pendingApproval = gated && approvals.some((child) => approvalToneOf(child) === "warn");
+        const expandable = (Array.isArray(attached) && attached.length > 0) || body !== null || gated;
+        /* team rows keep their chevron visible; a plain step reveals it on hover only */
+        const persistentChevron = Array.isArray(attached) && attached.length > 0;
+        const open = expandable ? overrideOf(`step:${key}`, (Array.isArray(attached) && attached.some((item) => item.unfinished)) || pendingApproval) : false;
+        const statusIcon =
           step.name === "compact-checkpoint"
             ? h("span", { className: "dsov-todoIcon dsov-compactIcon" }, h(IconCompact, { size: 15 }))
             : waitingRow
@@ -4009,17 +4734,162 @@ function FileTypeIcon(props) {
                   h("circle", { cx: 7.5, cy: 7.5, r: 2.4, fill: "currentColor", className: "dsov-todoPulse" })
                 )
               )
-            : h("span", { className: "dsov-todoIcon", "data-status": stepRunning ? "in_progress" : "completed" }, h(TodoStatusIcon, { status: stepRunning ? "in_progress" : "completed" })),
+            : h(
+                "span",
+                { className: "dsov-todoIcon", "data-status": stepRunning ? "in_progress" : "completed" },
+                h(TodoStatusIcon, { status: stepRunning ? "in_progress" : "completed" })
+              );
+        /* The expand affordance is the status icon itself: hovering swaps it for a
+           chevron in place, so nothing shifts and no second column appears. Team rows
+           keep their own always-visible chevron ahead of the status icon. */
+        const swapChevron = h(
+          "span",
+          { className: "dsov-chevron dsov-stepSwapChevron", "data-open": open ? "true" : "false", "aria-hidden": "true" },
+          h(IconChevron, { size: 12 })
+        );
+        const leading = !expandable
+          ? statusIcon
+          : persistentChevron
+          ? h(
+              React.Fragment,
+              { key: "lead" },
+              h(
+                "span",
+                {
+                  className: "dsov-chevron dsov-stepChevron",
+                  key: "chevron",
+                  "data-open": open ? "true" : "false",
+                  title: t(open ? "progress.collapseTeam" : "progress.expandTeam"),
+                  onClick: (event) => {
+                    event.stopPropagation();
+                    toggleKey(`step:${key}`, !open);
+                  },
+                },
+                h(IconChevron, { size: 11 })
+              ),
+              statusIcon
+            )
+          : h(
+              "span",
+              {
+                className: "dsov-stepIconSwap",
+                key: "swap",
+                "data-open": open ? "true" : "false",
+                title: t(open ? "progress.collapseStep" : "progress.expandStep"),
+                onClick: (event) => {
+                  event.stopPropagation();
+                  toggleKey(`step:${key}`, !open);
+                },
+              },
+              statusIcon,
+              swapChevron
+            );
+        const row = h(
+          "div",
+          {
+            className: "dsov-step",
+            key,
+            "data-error": failed ? "true" : "false",
+            "data-waiting": waitingRow ? "true" : "false",
+            "data-flash": flash === "ok" ? "ok" : flash === "err" ? "err" : undefined,
+            title: full === "" ? undefined : waitingRow ? `${t("progress.waiting")} · ${full}` : full,
+            ...(extraProps === undefined ? {} : extraProps),
+            onClick: () => onStepClick(step),
+          },
+          leading,
           h(
             "span",
             { className: "dsov-stepName" },
             step.name === "compact-checkpoint" ? t("step.compact") : step.name === "approval" ? t("step.approval") : typeof step.name === "string" ? step.name : ""
           ),
           h("span", { className: "dsov-stepDetail" }, detail),
+          gated
+            ? h(
+                "span",
+                {
+                  className: "dsov-stepChip",
+                  "data-tone": approvalToneOf(approvals[0]),
+                  title: approvalTitleOf(approvals, t),
+                },
+                approvalToneOf(approvals[0]) === "warn" ? t("step.approvalPending") : t("step.approvalGated")
+              )
+            : null,
           h("span", { className: "dsov-time", title: timeTitle(typeof step.endTime === "number" ? step.endTime : step.time) }, fmtTime(typeof step.endTime === "number" ? step.endTime : step.time))
         );
-        return expandable && open ? [row, ...attached.map((item) => item.row)] : row;
+        if (!open) return row;
+        const extras = [];
+        if (body !== null || gated) {
+          const block = stepBodyBlock(step, key, approvals);
+          if (block !== null) extras.push(block);
+        }
+        if (Array.isArray(attached)) for (const item of attached) extras.push(item.row);
+        return extras.length === 0 ? row : [row, ...extras];
       };
+      /* Nested approval row: its own two-line layout, because reusing the flat step
+         row squeezed the reason into the ellipsised detail column (~38px in a 332px
+         sidebar) and the text looked clipped away. The reason now wraps on its own
+         line; the outcome becomes a small badge instead of trailing detail text. */
+      const approvalChildRow = (step, key, isWaiting) => {
+        const running = step.done !== true;
+        const failed = step.error === true;
+        const waitingRow = isWaiting === true && running && !failed;
+        const tool = typeof step.approvalTool === "string" && step.approvalTool !== "" ? step.approvalTool : typeof step.detail === "string" ? step.detail : "";
+        const reason = typeof step.approvalReason === "string" ? step.approvalReason : "";
+        const outcome = typeof step.approvalOutcome === "string" ? step.approvalOutcome : "";
+        const outcomeText =
+          outcome === ""
+            ? ""
+            : /approved|allow/i.test(outcome)
+            ? t("step.approvalApproved")
+            : /denied|reject|deny/i.test(outcome)
+            ? t("step.approvalDenied")
+            : outcome;
+        const outcomeOk = !/denied|reject|deny/i.test(outcome);
+        const stamp = typeof step.endTime === "number" ? step.endTime : step.time;
+        const hoverText = [tool, reason, outcome].filter((part) => typeof part === "string" && part !== "").join(" · ");
+        return h(
+          "div",
+          {
+            className: "dsov-step dsov-stepChild",
+            key,
+            "data-error": failed ? "true" : "false",
+            "data-waiting": waitingRow ? "true" : "false",
+            title: hoverText === "" ? undefined : hoverText,
+          },
+          waitingRow
+            ? h(
+                "span",
+                { className: "dsov-todoIcon", "data-status": "waiting" },
+                h(
+                  "svg",
+                  { width: 15, height: 15, viewBox: "0 0 15 15", fill: "none", "aria-hidden": "true" },
+                  h("circle", { cx: 7.5, cy: 7.5, r: 6, stroke: "currentColor", strokeWidth: 1.3, opacity: 0.45 }),
+                  h("circle", { cx: 7.5, cy: 7.5, r: 2.4, fill: "currentColor", className: "dsov-todoPulse" })
+                )
+              )
+            : h(
+                "span",
+                { className: "dsov-todoIcon", "data-status": running ? "in_progress" : "completed" },
+                h(TodoStatusIcon, { status: running ? "in_progress" : "completed" })
+              ),
+          h(
+            "div",
+            { className: "dsov-stepChildBody" },
+            h(
+              "div",
+              { className: "dsov-stepChildTop" },
+              h("span", { className: "dsov-stepName" }, t("step.approval")),
+              tool !== "" ? h("span", { className: "dsov-stepChildTool" }, tool) : null,
+              outcomeText !== ""
+                ? h("span", { className: "dsov-stepChildOutcome", "data-ok": outcomeOk ? "true" : "false" }, outcomeText)
+                : null,
+              h("span", { className: "dsov-time", title: timeTitle(stamp) }, fmtTime(stamp))
+            ),
+            reason !== "" ? h("div", { className: "dsov-stepChildNote" }, reason) : null
+          )
+        );
+      };
+
       const pushStepRow = (target, step, key, extraProps, isWaiting) => {
         const rendered = stepRow(step, key, extraProps, isWaiting);
         if (Array.isArray(rendered)) target.push(...rendered);
@@ -4142,10 +5012,17 @@ function FileTypeIcon(props) {
       if (hasTeam && !showSteps) pushFlatTeam(kids);
       if (showSteps) {
         const markWaiting = waiting === true && summary.scope === "latest";
+        /* a step blocked on an approval is not the thing being waited on: the
+           nested approval row carries the waiting state instead */
+        const approvalBlocked = new Set();
+        for (const [parentKey, list] of approvalChildren) {
+          if (list.some((child) => child.done !== true && child.error !== true)) approvalBlocked.add(parentKey);
+        }
         let waitingIndex = -1;
         if (markWaiting) {
-          for (let index = displaySteps.length - 1; index >= 0; index -= 1) {
-            if (displaySteps[index].done !== true && displaySteps[index].error !== true) {
+          for (let index = renderSteps.length - 1; index >= 0; index -= 1) {
+            if (approvalBlocked.has(stepKeyOf(renderSteps[index], index))) continue;
+            if (renderSteps[index].done !== true && renderSteps[index].error !== true) {
               waitingIndex = index;
               break;
             }
@@ -4153,12 +5030,17 @@ function FileTypeIcon(props) {
         }
         const rows = [];
         let freshCount = 0;
-        displaySteps.forEach((step, index) => {
+        renderSteps.forEach((step, index) => {
           const key = stepKeyOf(step, index);
           const fresh = asOfTime === null && !seenSteps.current.keys.has(key);
           if (fresh) {
             seenSteps.current.keys.add(key);
             freshCount += 1;
+          }
+          if (step.name === "approval") {
+            /* an approval whose tool call fell outside the window still needs a row */
+            rows.push(approvalChildRow(step, key, step.done !== true && step.error !== true));
+            return;
           }
           pushStepRow(rows, step, key, fresh ? { "data-enter": "true", style: { animationDelay: `${(freshCount - 1) * 45}ms` } } : undefined, index === waitingIndex);
         });
@@ -4188,10 +5070,14 @@ function FileTypeIcon(props) {
         );
         kids.push(h("div", { className: "dsov-steps", key: "steps" }, rows));
       }
-      return h(Section, { id: "progress", icon: h(IconProgress, { size: 15 }), title: t("section.progress"), empty: t(summary.scope === "all" ? "progress.empty" : "progress.emptyTurn") }, kids);
+      return h(
+        Section,
+        { id: "progress", ...sectionIntroProps(introSeq, 0), icon: h(IconProgress, { size: 15 }), title: t("section.progress"), empty: t(summary.scope === "all" ? "progress.empty" : "progress.emptyTurn") },
+        kids
+      );
     }
 
-    function ArtifactsSection({ summary, t, binding, stats, asOf }) {
+    function ArtifactsSection({ summary, t, binding, stats, asOf, introSeq }) {
       const cfg = useConfig();
       const asOfTime = typeof asOf === "number" && asOf > 0 ? asOf : null;
       const visibleArtifacts = asOfTime === null ? summary.artifacts : summary.artifacts.filter((artifact) => (artifact.firstTime || artifact.time || 0) <= asOfTime);
@@ -4233,24 +5119,35 @@ function FileTypeIcon(props) {
         const stat = stats ? stats.get(absPath(cwd, artifact.path)) : undefined;
         const showCounts = stat !== undefined && !stat.binary && !stat.oversized && (stat.added > 0 || stat.deleted > 0);
         const isMemory = typeof artifact.path === "string" && artifact.path.startsWith("viking://");
+        const isConclusion = artifact.kind === "conclusion";
+        const isPlan = artifact.plan === true;
+        const planName = isPlan ? (typeof artifact.planTitle === "string" && artifact.planTitle !== "" ? artifact.planTitle : t("artifact.plan")) : "";
         return h(
           "button",
           {
             type: "button",
             className: "dsov-row",
             key: `${artifact.path}#${index}`,
-            title: artifact.description ? `${artifact.path} — ${artifact.description}` : artifact.path,
+            title: isConclusion ? `${artifact.title} · ${t("artifact.conclusionHint")}` : isPlan ? planName : artifact.description ? `${artifact.path} — ${artifact.description}` : artifact.path,
             onClick: () => openArtifact(binding, artifact, stats),
             onContextMenu:
-              canFileMenu && !isMemory
+              canFileMenu && !isMemory && !isPlan && !isConclusion
                 ? (event) => {
                     event.preventDefault();
                     setFileMenu({ x: event.clientX, y: event.clientY, path: absPath(cwd, artifact.path) });
                   }
                 : undefined,
           },
-          h("span", { className: "dsov-fileIcon" }, h(FileTypeIcon, { path: artifact.path, size: 20 })),
-          h("span", { className: "dsov-artifactName" }, basename(artifact.path)),
+          h(
+            "span",
+            { className: "dsov-fileIcon" },
+            isConclusion
+              ? h("span", { className: "dsov-fileMark", "data-kind": "conclusion" }, h(IconConclusion, { size: 15 }))
+              : isPlan
+                ? h(IconPlan, { size: 20 })
+                : h(FileTypeIcon, { path: artifact.path, size: 20 })
+          ),
+          h("span", { className: "dsov-artifactName" }, isConclusion ? artifact.title : isPlan ? planName : basename(artifact.path)),
           showCounts
             ? h(
                 "span",
@@ -4263,6 +5160,9 @@ function FileTypeIcon(props) {
               : null,
           isMemory ? h("span", { className: "dsov-badge", "data-tone": "quiet" }, t("artifact.memory")) : null,
           artifact.presented ? h("span", { className: "dsov-badge", "data-tone": "brand" }, t("artifact.presented")) : null,
+          isPlan ? h("span", { className: "dsov-badge", "data-tone": "plan" }, t("artifact.plan")) : null,
+          isConclusion ? h("span", { className: "dsov-badge", "data-tone": "brand" }, t("artifact.conclusion")) : null,
+          isConclusion && typeof artifact.chars === "number" ? h("span", { className: "dsov-badge", "data-tone": "quiet" }, t("artifact.conclusionChars", { n: artifact.chars })) : null,
           h("span", { className: "dsov-rowTail" }, h("span", { className: "dsov-time", title: timeTitle(artifact.time) }, fmtTime(artifact.time)))
         );
       });
@@ -4271,6 +5171,7 @@ function FileTypeIcon(props) {
         Section,
         {
           id: "artifacts",
+          ...sectionIntroProps(introSeq, 70),
           icon: h(IconArtifact, { size: 15 }),
           title: t("section.artifacts"),
           badge: visibleArtifacts.length > 0 ? String(visibleArtifacts.length) : undefined,
@@ -4388,7 +5289,23 @@ function FileTypeIcon(props) {
       return h(RefIcon, { kind: ref.kind, size: 14 });
     }
 
-    function ReferencesSection({ summary, t, sessionId, asOf }) {
+    /* per-session memory of reference keys whose entrance already animated
+       (page lifetime): collapsing, scope switching and tab remounts never replay */
+    const seenRefKeys = new Map();
+    function seenRefKeysFor(sessionId) {
+      const storeKey = typeof sessionId === "string" && sessionId !== "" ? sessionId : "-";
+      let set = seenRefKeys.get(storeKey);
+      if (set === undefined) {
+        set = new Set();
+        seenRefKeys.set(storeKey, set);
+      }
+      return set;
+    }
+    function refKeyOf(ref) {
+      return isRecord(ref) && typeof ref.key === "string" && ref.key !== "" ? ref.key : `label:${isRecord(ref) ? ref.label : ""}`;
+    }
+
+    function ReferencesSection({ summary, t, sessionId, asOf, introSeq }) {
       const cfg = useConfig();
       const asOfTime = typeof asOf === "number" && asOf > 0 ? asOf : null;
       const allRefs = asOfTime === null ? summary.references : summary.references.filter((ref) => (ref.firstTime || ref.time || 0) <= asOfTime);
@@ -4396,6 +5313,11 @@ function FileTypeIcon(props) {
       const timeTitle = (ts) => (cfg.timeMode === "elapsed" ? formatTime(ts) : undefined);
       const sortMode = useRefSort();
       const hideCommon = useHideCommonRefs();
+      /* "all" spans the session (count turns); a turn view reports that turn's mentions. */
+      const multiTurn = summary.scope === "all";
+      /* "count" means turn coverage across the session, or mentions inside one turn. */
+      const sortLabelOf = (mode) =>
+        mode === "count" && multiTurn === false ? t("reference.sort.hits.title") : t(`reference.sort.${mode}.title`);
       const typeFilter = useRefTypes();
       const [revealState, setRevealState] = React.useState({});
       const revealTimers = React.useRef({});
@@ -4432,7 +5354,32 @@ function FileTypeIcon(props) {
       const scoped = hideCommon ? allRefs.filter((ref) => ref.ubiquitous !== true) : allRefs;
       const selectedTypes = Array.isArray(typeFilter) ? typeFilter : [];
       const filtered = selectedTypes.length === 0 ? scoped : scoped.filter((ref) => selectedTypes.indexOf(refDisplayType(ref)) !== -1);
-      const sorted = sortReferences(filtered, sortMode);
+      const sorted = sortReferences(filtered, sortMode, multiTurn);
+      /* first-appearance animation: brand-new rows rise in with a small stagger;
+         scrubbing the timeline never animates (rows would flicker in and out) */
+      const seenRefs = seenRefKeysFor(sessionId);
+      const enterDelays = new Map();
+      if (asOfTime === null) {
+        let batch = 0;
+        for (const ref of sorted) {
+          const refKey = refKeyOf(ref);
+          if (seenRefs.has(refKey)) continue;
+          enterDelays.set(refKey, Math.min(batch, 11) * 45);
+          batch += 1;
+        }
+      }
+      React.useEffect(() => {
+        if (asOfTime !== null) {
+          for (const ref of sorted) seenRefs.add(refKeyOf(ref));
+          return undefined;
+        }
+        /* mark after the longest animation finished so quick re-renders keep the
+           attribute (a CSS animation never restarts while the attribute stays) */
+        const timer = setTimeout(() => {
+          for (const ref of sorted) seenRefs.add(refKeyOf(ref));
+        }, 900);
+        return () => clearTimeout(timer);
+      });
       const rows = sorted.map((ref, index) => {
         const detail = Array.isArray(ref.detail) ? ref.detail : [];
         const shown = detail.slice(0, 8);
@@ -4449,7 +5396,19 @@ function FileTypeIcon(props) {
               h("span", { className: "dsov-rowName" }, refTitle(ref, t)),
               h("span", { className: "dsov-badge" }, t(KIND_KEYS[ref.kind] ?? "reference.kind.context")),
               ref.form ? h("span", { className: "dsov-badge", "data-tone": "quiet" }, t(`reference.form.${ref.form}`) === `reference.form.${ref.form}` ? ref.form : t(`reference.form.${ref.form}`)) : null,
-              ref.count > 1 ? h("span", { className: "dsov-badge", "data-tone": "quiet" }, t("reference.times", { n: ref.count })) : null
+              (multiTurn ? refTurnsOf(ref) > 1 : refHitsOf(ref) > 1)
+                ? h(
+                    "span",
+                    {
+                      className: "dsov-badge",
+                      "data-tone": "quiet",
+                      title: multiTurn
+                        ? t("reference.turnsTitle", { turns: refTurnsOf(ref), times: refHitsOf(ref) })
+                        : t("reference.timesTitle", { times: refHitsOf(ref) }),
+                    },
+                    multiTurn ? t("reference.turns", { n: refTurnsOf(ref) }) : t("reference.times", { n: refHitsOf(ref) })
+                  )
+                : null
             ),
             shown.length > 0
               ? h(
@@ -4493,13 +5452,15 @@ function FileTypeIcon(props) {
           h("span", { className: "dsov-time", key: "time", title: timeTitle(ref.time) }, fmtTime(ref.time)),
         ];
         const isFile = ref.kind === "file";
+        const enterDelay = enterDelays.get(refKeyOf(ref));
+        const enterProps = enterDelay === undefined ? { key: `ref-${refKeyOf(ref)}` } : { key: `ref-${refKeyOf(ref)}`, "data-enter": "true", style: { animationDelay: `${enterDelay}ms` } };
         if (isFile) {
           return h(
             "button",
             {
               type: "button",
               className: "dsov-row",
-              key: `ref-${index}`,
+              ...enterProps,
               title: ref.label,
               onClick: () => openSessionFile(sessionId, ref.label),
             },
@@ -4512,7 +5473,7 @@ function FileTypeIcon(props) {
             {
               type: "button",
               className: "dsov-row",
-              key: `ref-${index}`,
+              ...enterProps,
               title: ref.uri,
               onClick: () => openVikingPreview(ref.uri),
             },
@@ -4525,7 +5486,7 @@ function FileTypeIcon(props) {
             {
               type: "button",
               className: "dsov-row",
-              key: `ref-${index}`,
+              ...enterProps,
               title: t("reference.previewHint"),
               onClick: () => openContextPreview(ref.previewKey),
             },
@@ -4534,7 +5495,7 @@ function FileTypeIcon(props) {
         }
         return h(
           "div",
-          { className: "dsov-row dsov-rowStatic", key: `ref-${index}`, title: isVikingUri(ref.uri) ? ref.uri : ref.label },
+          { className: "dsov-row dsov-rowStatic", ...enterProps, title: isVikingUri(ref.uri) ? ref.uri : ref.label },
           ...content
         );
       });
@@ -4571,6 +5532,7 @@ function FileTypeIcon(props) {
         Section,
         {
           id: "references",
+          ...sectionIntroProps(introSeq, 140),
           icon: h(IconReference, { size: 15 }),
           title: t("section.references"),
           badge: filtered.length > 0 ? String(filtered.length) : undefined,
@@ -4608,10 +5570,11 @@ function FileTypeIcon(props) {
                           key: mode,
                           className: "dsov-segBtn",
                           "data-active": sortMode === mode ? "true" : "false",
-                          title: sortMode === mode ? `${t(`reference.sort.${mode}.title`)} · ${t("reference.sort.cancel")}` : t(`reference.sort.${mode}.title`),
+                          title:
+                            (sortMode === mode ? `${sortLabelOf(mode)} · ${t("reference.sort.cancel")}` : sortLabelOf(mode)),
                           onClick: () => setRefSort(sortMode === mode ? "" : mode),
                         },
-                        t(`reference.sort.${mode}`)
+                        mode === "count" && multiTurn === false ? t("reference.sort.hits") : t(`reference.sort.${mode}`)
                       )
                     )
                   )
@@ -4646,6 +5609,19 @@ function FileTypeIcon(props) {
       const [errPop, setErrPop] = React.useState(null);
       const errOpen = isRecord(errPop);
       const errRef = React.useRef(null);
+      const errBtnRef = React.useRef(null);
+      /* Place the fixed popover under its pill, clamped into the viewport. */
+      const placePopover = React.useCallback(() => {
+        const button = errBtnRef.current;
+        if (button === null || button.isConnected !== true) return false;
+        const rect = button.getBoundingClientRect();
+        if (rect.bottom < 0 || rect.top > window.innerHeight) return false;
+        setErrPop({
+          top: Math.min(rect.bottom + 5, Math.max(8, window.innerHeight - 292)),
+          right: Math.max(8, window.innerWidth - rect.right),
+        });
+        return true;
+      }, []);
       React.useEffect(() => {
         if (!errOpen) return undefined;
         const close = () => setErrPop(null);
@@ -4655,17 +5631,30 @@ function FileTypeIcon(props) {
         const onKey = (event) => {
           if (event.key === "Escape") close();
         };
+        /* Following the anchor instead of dismissing: the chat auto-scrolls on every
+           streamed event, so closing on scroll made the popover impossible to read
+           while a turn was running. Reposition, and only close once the pill itself
+           left the viewport (or unmounted). */
+        let frame = 0;
+        const follow = () => {
+          if (frame !== 0) return;
+          frame = requestAnimationFrame(() => {
+            frame = 0;
+            if (!placePopover()) setErrPop(null);
+          });
+        };
         document.addEventListener("mousedown", onDown);
         document.addEventListener("keydown", onKey);
-        window.addEventListener("scroll", close, true);
-        window.addEventListener("resize", close);
+        window.addEventListener("scroll", follow, true);
+        window.addEventListener("resize", follow);
         return () => {
+          if (frame !== 0) cancelAnimationFrame(frame);
           document.removeEventListener("mousedown", onDown);
           document.removeEventListener("keydown", onKey);
-          window.removeEventListener("scroll", close, true);
-          window.removeEventListener("resize", close);
+          window.removeEventListener("scroll", follow, true);
+          window.removeEventListener("resize", follow);
         };
-      }, [errOpen]);
+      }, [errOpen, placePopover]);
       if (!isRecord(stats)) return null;
       const duration = typeof stats.durationMs === "number" ? stats.durationMs : 0;
       const toolCalls = typeof stats.toolCalls === "number" ? stats.toolCalls : 0;
@@ -4720,20 +5709,17 @@ function FileTypeIcon(props) {
                   className: "dsov-stat dsov-statBtn",
                   "data-tone": "err",
                   "data-active": errOpen ? "true" : undefined,
+                  ref: errBtnRef,
                   disabled: failed.length === 0,
                   title: failed.length > 0 ? t("stats.errors.popTitle") : t("stats.errors.title"),
                   onClick:
                     failed.length > 0
-                      ? (event) => {
+                      ? () => {
                           if (errOpen) {
                             setErrPop(null);
                             return;
                           }
-                          const rect = event.currentTarget.getBoundingClientRect();
-                          setErrPop({
-                            top: Math.min(rect.bottom + 5, Math.max(8, window.innerHeight - 292)),
-                            right: Math.max(8, window.innerWidth - rect.right),
-                          });
+                          if (!placePopover()) setErrPop(null);
                         }
                       : undefined,
                 },
@@ -4777,6 +5763,175 @@ function FileTypeIcon(props) {
       );
     }
 
+    /** Which side of a subagent lineage the bound session is on, read from catalog
+        metadata only (never an Agent-bound RPC). */
+    function sessionRoleOf(sessionId) {
+      const empty = { kind: "main", parentId: null, parentTitle: "", mode: "", children: [] };
+      if (typeof sessionId !== "string" || sessionId === "") return empty;
+      let ctx = null;
+      try {
+        ctx = runtime === null ? null : runtime.ctx;
+      } catch {
+        ctx = null;
+      }
+      let snapshot = null;
+      try {
+        snapshot = ctx === null || ctx === undefined ? null : ctx.sessions.list.getSnapshot();
+      } catch {
+        snapshot = null;
+      }
+      let address = null;
+      try {
+        address = ctx === null || ctx === undefined ? null : ctx.sessions.subagentAddress(sessionId);
+      } catch {
+        address = null;
+      }
+      const byId = isRecord(snapshot) && isRecord(snapshot.byId) ? snapshot.byId : {};
+      const self = isRecord(byId[sessionId]) ? byId[sessionId] : null;
+      const parentId =
+        isRecord(address) && typeof address.parentSessionId === "string" && address.parentSessionId !== ""
+          ? address.parentSessionId
+          : self !== null && typeof self.parentId === "string" && self.parentId !== ""
+          ? self.parentId
+          : null;
+      const parent = parentId !== null && isRecord(byId[parentId]) ? byId[parentId] : null;
+      const ids = isRecord(snapshot) && Array.isArray(snapshot.ids) ? snapshot.ids : [];
+      const children = [];
+      const seen = new Set();
+      for (const id of ids) {
+        const entry = isRecord(byId[id]) ? byId[id] : null;
+        if (entry === null || entry.parentId !== sessionId) continue;
+        seen.add(id);
+        children.push({
+          id,
+          title: typeof entry.displayTitle === "string" && entry.displayTitle !== "" ? entry.displayTitle : id,
+          running: entry.running === true,
+        });
+      }
+      /* A child can exist in the parent's catalog projection before the list is
+         projected; the catalog is the same metadata the host itself reads. */
+      const projections = isRecord(snapshot) && isRecord(snapshot.projectionsBySession) ? snapshot.projectionsBySession : null;
+      const parentProjection = projections !== null && isRecord(projections[sessionId]) ? projections[sessionId] : null;
+      const catalog = parentProjection !== null && isRecord(parentProjection.values) && Array.isArray(parentProjection.values.subagentCatalog) ? parentProjection.values.subagentCatalog : [];
+      for (const entry of catalog) {
+        if (!isRecord(entry) || typeof entry.id !== "string" || entry.id === "" || seen.has(entry.id)) continue;
+        if (entry.mode === "external") continue;
+        seen.add(entry.id);
+        const listed = isRecord(byId[entry.id]) ? byId[entry.id] : null;
+        const label = typeof entry.title === "string" && entry.title !== "" ? entry.title : typeof entry.label === "string" ? entry.label : "";
+        children.push({
+          id: entry.id,
+          title:
+            listed !== null && typeof listed.displayTitle === "string" && listed.displayTitle !== ""
+              ? listed.displayTitle
+              : label !== ""
+              ? label
+              : entry.id,
+          running: listed !== null ? listed.running === true : false,
+        });
+      }
+      if (parentId === null) return { ...empty, children };
+      return {
+        kind: "sub",
+        parentId,
+        parentTitle: parent !== null && typeof parent.displayTitle === "string" ? parent.displayTitle : "",
+        mode: isRecord(address) && typeof address.mode === "string" ? address.mode : "",
+        children,
+      };
+    }
+
+    /** Whether the workspace service can move the main conversation to another session. */
+    function canNavigateSession() {
+      try {
+        const ctx = runtime === null ? null : runtime.ctx;
+        const workspace = ctx === null || ctx === undefined ? null : ctx.uiWorkspace;
+        return isRecord(workspace) && typeof workspace.openSession === "function";
+      } catch {
+        return false;
+      }
+    }
+
+    function openSessionById(sessionId) {
+      if (typeof sessionId !== "string" || sessionId === "") return false;
+      try {
+        const ctx = runtime === null ? null : runtime.ctx;
+        const workspace = ctx === null || ctx === undefined ? null : ctx.uiWorkspace;
+        if (!isRecord(workspace) || typeof workspace.openSession !== "function") return false;
+        workspace.openSession(sessionId);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    /** One compact line that says whether this overview belongs to the main agent or to
+        a subagent, and offers to switch to the other side of that lineage. */
+    function SessionRoleBar({ t, sessionId, hasWork }) {
+      const role = sessionRoleOf(sessionId);
+      const [open, setOpen] = React.useState(false);
+      const canSwitch = canNavigateSession();
+      const children =
+        role.children.length === 0
+          ? null
+          : h(
+              "button",
+              {
+                type: "button",
+                className: "dsov-roleBtn",
+                "data-open": open ? "true" : "false",
+                title: t("role.childrenToggle"),
+                onClick: () => setOpen((value) => !value),
+              },
+              t("role.children", { n: role.children.length }),
+              h(IconChevron, { size: 11, className: "dsov-roleChevron" })
+            );
+      const list =
+        !open || role.children.length === 0
+          ? null
+          : h(
+              "div",
+              { className: "dsov-roleList" },
+              role.children.map((child) =>
+                h(
+                  "button",
+                  {
+                    type: "button",
+                    className: "dsov-roleItem",
+                    key: child.id,
+                    title: canSwitch ? t("role.switchTitle") : child.title,
+                    disabled: !canSwitch,
+                    onClick: canSwitch ? () => openSessionById(child.id) : undefined,
+                  },
+                  h("span", { className: "dsov-roleDot", "data-running": child.running ? "true" : "false" }),
+                  h("span", { className: "dsov-roleItemTitle" }, child.title)
+                )
+              )
+            );
+      if (role.kind === "sub") {
+        const parentName = role.parentTitle !== "" ? role.parentTitle : role.parentId;
+        return h(
+          "div",
+          { className: "dsov-role", "data-kind": "sub" },
+          h("span", { className: "dsov-roleBadge" }, t("role.subagent")),
+          role.mode !== "" && role.mode !== "unknown" ? h("span", { className: "dsov-roleMode" }, role.mode) : null,
+          canSwitch
+            ? h(
+                "button",
+                { type: "button", className: "dsov-roleBtn", "data-link": "true", title: t("role.openParentTitle"), onClick: () => openSessionById(role.parentId) },
+                t("role.openParent"),
+                h("span", { className: "dsov-roleParent" }, parentName)
+              )
+            : h("span", { className: "dsov-roleHint" }, t("role.openParent"), h("span", { className: "dsov-roleParent" }, parentName)),
+          children,
+          list
+        );
+      }
+      /* A plain main session with no subagents in this scope has no identity to
+         announce: the badge, the child list, and the parent link are all noise. */
+      if (role.children.length === 0 || hasWork === false) return null;
+      return h("div", { className: "dsov-role", "data-kind": "main" }, h("span", { className: "dsov-roleBadge" }, t("role.main")), children, list);
+    }
+
     function OverviewContent({ binding, t, variant }) {
       const [selection, setSelection] = React.useState("latest");
       /* timeline scrubbing: a null asOf always means "live/latest state" */
@@ -4796,11 +5951,53 @@ function FileTypeIcon(props) {
         setAsOf(null);
       }, [selection]);
       const summary = useSummary(binding, selection);
-      useBackfill(binding, summary.hasMore);
+      /* 「重新加载」restarts the backfill loop from zero — the escape hatch when the
+         host loader silently no-ops (another loader holds the lock) or a page fails. */
+      const [historyRetry, setHistoryRetry] = React.useState(0);
+      const historyStalled = useBackfill(binding, summary.hasMore, historyRetry);
       const goal = useGoal(binding);
       const stats = useArtifactStats(binding, summary.changeTurns);
       const cfg = useConfig();
       const sessionId = binding ? binding.sessionId : undefined;
+      /* 本轮结论 as a document: a turn that finishes while this overview is open pops
+         its closing reply into a tab once. A turn that had already finished before the
+         overview mounted is never re-opened (no tab storm on refresh or scope switch). */
+      const conclusionGuard = React.useRef({ ready: false, opened: new Set() });
+      React.useEffect(() => {
+        const conclusion = isRecord(summary.conclusion) ? summary.conclusion : null;
+        const key = `${sessionId}|${conclusion === null ? "" : conclusion.turn}`;
+        const guard = conclusionGuard.current;
+        if (guard.ready !== true) {
+          /* first paint: a turn that had already finished is never re-opened */
+          guard.ready = true;
+          if (conclusion !== null && conclusion.ended === true) guard.opened.add(key);
+          return;
+        }
+        if (conclusion === null || conclusion.ended !== true || guard.opened.has(key)) return;
+        guard.opened.add(key);
+        if (cfg.conclusionTab !== true) return;
+        if (typeof conclusion.previewKey !== "string" || conclusion.previewKey === "") return;
+        if (contextSidebar() === null) return;
+        if (!claimConclusionTab(key)) return;
+        /* a failed open must not eat the claim: another instance may still show the tab */
+        const entry = readContextPreview(conclusion.previewKey);
+        const docKey = `conclusion:${typeof conclusion.turn === "number" ? conclusion.turn : conclusion.previewKey}`;
+        const opened = openNativeDocument(sessionId, docKey, conclusion.title, entry === null ? undefined : entry.text) || openContextPreview(conclusion.previewKey);
+        if (!opened) conclusionAutoOpened.delete(key);
+      }, [summary, cfg.conclusionTab, sessionId]);
+      /* Agent identity only earns its row when a subagent actually took part in the
+         visible scope — otherwise the overview is a single-agent conversation. */
+      const roleWork = React.useMemo(() => {
+        const team = isRecord(summary.team) ? summary.team : null;
+        if (team !== null && (Array.isArray(team.subagents) && team.subagents.length > 0)) return true;
+        if (team !== null && (Array.isArray(team.members) && team.members.length > 0)) return true;
+        const steps = Array.isArray(summary.stepsAll) ? summary.stepsAll : [];
+        return steps.some(
+          (step) =>
+            isRecord(step) &&
+            (step.name === "subagent" || step.name === "subagent_fork" || step.name === "spawn_teammate" || step.name === "team_task_create" || typeof step.teamKey === "string")
+        );
+      }, [summary]);
       const rootClass = variant === "panel" ? "dsov-panel" : "dsov-view";
       const rootRef = React.useRef(null);
       const scope = summary.scope === selection || selection === "latest" ? summary.scope : selection;
@@ -4835,6 +6032,29 @@ function FileTypeIcon(props) {
           errors: list.filter((step) => step.error === true && (step.endTime || step.time || 0) <= asOf).length,
         };
       }, [asOf, summary]);
+      /* A new turn gets a staged entrance for the three sections plus a short
+         「第 N 轮对话开始」 cue. First paint of an already-running turn stays silent,
+         and nothing replays on re-renders, scope switches or tab remounts. */
+      const [introSeq, setIntroSeq] = React.useState(0);
+      const [introBanner, setIntroBanner] = React.useState(null);
+      const introTurn = React.useRef(null);
+      React.useEffect(() => {
+        const turn = Number.isFinite(summary.latestTurn) ? summary.latestTurn : null;
+        if (turn === null || asOf !== null) return;
+        if (introTurn.current === null) {
+          introTurn.current = turn;
+          return;
+        }
+        if (turn === introTurn.current) return;
+        introTurn.current = turn;
+        setIntroSeq((value) => value + 1);
+        setIntroBanner(turn);
+      }, [summary.latestTurn, asOf]);
+      React.useEffect(() => {
+        if (introBanner === null) return undefined;
+        const timer = setTimeout(() => setIntroBanner(null), 2200);
+        return () => clearTimeout(timer);
+      }, [introBanner, introSeq]);
       const canTimeline = typeof summary.turnStart === "number" && typeof summary.turnEnd === "number" && summary.turnEnd > summary.turnStart;
       /* the errors pill drills into these: failed steps of the scope, honoring the scrub point */
       const failedSteps = React.useMemo(() => {
@@ -5013,10 +6233,40 @@ function FileTypeIcon(props) {
                 ),
                 timelineRow
               ),
-        summary.hasMore ? h("div", { className: "dsov-loading" }, t("state.loadingHistory")) : null,
-        cfg.showProgress ? h(ProgressSection, { summary, goal, t, waiting: sessionWaiting && asOf === null, cfg, asOf }) : null,
-        cfg.showArtifacts ? h(ArtifactsSection, { summary, t, binding, stats, asOf }) : null,
-        cfg.showReferences ? h(ReferencesSection, { summary, t, sessionId, asOf }) : null
+        binding && typeof binding.sessionId === "string" && binding.sessionId !== "" ? h(SessionRoleBar, { key: "roleBar", t, sessionId: binding.sessionId, hasWork: roleWork }) : null,
+        summary.hasMore
+          ? h(
+              "div",
+              { className: "dsov-loading" },
+              h("span", { className: "dsov-loadingText" }, t(historyStalled ? "state.loadingStalled" : "state.loadingHistory")),
+              h(
+                "button",
+                {
+                  type: "button",
+                  className: "dsov-loadingReload",
+                  title: t("state.reloadHistory.title"),
+                  onClick: () => {
+                    /* Re-arming alone is not enough: the loop would issue the same
+                       call that just no-oped. Pull one page directly first, using the
+                       seq-free loader when available, then let the loop take over. */
+                    const session = binding ? binding.session : undefined;
+                    try {
+                      if (isRecord(session) && typeof session.loadOlder === "function") Promise.resolve(session.loadOlder()).catch(() => {});
+                      else if (isRecord(session) && typeof session.loadThrough === "function") Promise.resolve(session.loadThrough(0)).catch(() => {});
+                    } catch {
+                      /* the re-arm below still gives the loop another chance */
+                    }
+                    setHistoryRetry((value) => value + 1);
+                  },
+                },
+                t("state.reloadHistory")
+              )
+            )
+          : null,
+        introBanner !== null ? h("div", { className: "dsov-turnStart", key: `turnStart-${introSeq}` }, h("span", { className: "dsov-turnStartDot" }), t("intro.newTurn", { n: introBanner })) : null,
+        cfg.showProgress ? h(ProgressSection, { summary, goal, t, waiting: sessionWaiting && asOf === null, cfg, asOf, introSeq }) : null,
+        cfg.showArtifacts ? h(ArtifactsSection, { summary, t, binding, stats, asOf, introSeq }) : null,
+        cfg.showReferences ? h(ReferencesSection, { summary, t, sessionId, asOf, introSeq }) : null
       );
     }
 
@@ -5200,7 +6450,7 @@ function FileTypeIcon(props) {
         view.status === "ready" && view.mode === "file" && source === true ? h("pre", { className: "dsov-vikingSource" }, view.text) : null,
         view.status === "ready" && view.mode === "file" && source !== true && parsed ? renderFrontmatterFields(parsed, t) : null,
         view.status === "ready" && view.mode === "file" && source !== true && parsed
-          ? h("div", { className: "dsov-md", dangerouslySetInnerHTML: { __html: mdToHtml(parsed.body) } })
+          ? h(MarkdownBody, { text: parsed.body })
           : null
       );
     }
@@ -5308,22 +6558,54 @@ function FileTypeIcon(props) {
       if (entry === null) {
         return h("div", { className: "dsov-viking" }, h("div", { className: "dsov-vikingError" }, t("context.unavailable")));
       }
+      if (entry.kind === "conclusion") {
+        /* Just the turn's closing answer, rendered exactly as the chat renders it;
+           the page geometry mirrors the host's own Markdown document page so the
+           fallback tab reads the same as the banner-opened one. */
+        return h(
+          "section",
+          { className: "dsov-docPage", "data-doc-preview": "conclusion", "aria-label": entry.title },
+          h(
+            "div",
+            { className: "dsov-docDocument" },
+            ChatMarkdown
+              ? h(ChatMarkdown, { text: entry.text, labels: chatMarkdownLabels(t) })
+              : h(MarkdownBody, { text: entry.text })
+          )
+        );
+      }
       return h(
         "div",
         { className: "dsov-viking" },
         h(
           "div",
           { className: "dsov-vikingHead" },
-          h("span", { className: "dsov-vikingIcon" }, h(IconReference, { size: 15 })),
+          h("span", { className: "dsov-vikingIcon" }, entry.kind === "plan" ? h(IconPlan, { size: 15 }) : h(IconReference, { size: 15 })),
           h(
             "span",
             { className: "dsov-vikingHeadText" },
             h("span", { className: "dsov-vikingName" }, entry.title),
-            h("span", { className: "dsov-vikingPathText" }, t("context.subtitle"))
+            h(
+              "span",
+              { className: "dsov-vikingPathText" },
+              entry.kind === "plan" ? t("context.subtitlePlan") : t("context.subtitle")
+            )
           )
         ),
-        h("div", { className: "dsov-md", dangerouslySetInnerHTML: { __html: mdToHtml(entry.text) } })
+        h(MarkdownBody, { text: entry.text })
       );
+    }
+
+    /** Tab chip for a captured snapshot: the file glyph the host's document tabs carry. */
+    function ContextTabTitle(props) {
+      const t = typeof props.t === "function" ? props.t : translate;
+      const info = typeof props.useTabInfo === "function" ? props.useTabInfo() : null;
+      const key = info && isRecord(info.tab) ? parseContextAddress(info.tab.contentId) : undefined;
+      const entry = key === undefined ? null : readContextPreview(key);
+      const title = entry !== null ? entry.title : t("context.tab");
+      /* only documents carry the glyph; reference snapshots keep a plain caption */
+      if (entry === null || (entry.kind !== "conclusion" && entry.kind !== "plan")) return title;
+      return h(React.Fragment, null, h(FileTypeIcon, { kind: "other", size: 16, className: "dsov-docTitleIcon" }), title);
     }
 
     /* ------------------------------------------------------------------ */
@@ -5380,7 +6662,7 @@ function FileTypeIcon(props) {
     }
 
     /* dsh-context style settings rows: label left, pill-select control right. */
-    function SettingSelect({ label, value, options, onPick }) {
+    function SettingSelect({ label, value, options, onPick, hint }) {
       const [open, setOpen] = React.useState(false);
       const rootRef = React.useRef(null);
       React.useEffect(() => {
@@ -5396,7 +6678,7 @@ function FileTypeIcon(props) {
       return h(
         "div",
         { className: "dsov-set-row" },
-        h("span", { className: "dsov-set-label" }, label),
+        h("span", { className: "dsov-set-label" }, h("span", { className: "dsov-set-labelText" }, label), hint ?? null),
         h(
           "div",
           { className: "dsov-set-control", ref: rootRef },
@@ -5489,7 +6771,7 @@ function FileTypeIcon(props) {
       return h(
         "div",
         { className: "dsov-set-row dsov-set-arearow" },
-        h("span", { className: "dsov-set-label" }, label),
+        label === "" ? null : h("span", { className: "dsov-set-label" }, label),
         h("textarea", {
           className: "dsov-set-textarea",
           rows: 7,
@@ -5511,6 +6793,7 @@ function FileTypeIcon(props) {
     function SettingsForm(props) {
       const t = typeof props.t === "function" ? props.t : translate;
       const hookForm = useSettingsForm();
+      const [showDefaultPrompt, setShowDefaultPrompt] = React.useState(false);
       if (props.view === "summary") {
         return h("span", null, t("settings.summary"));
       }
@@ -5540,6 +6823,14 @@ function FileTypeIcon(props) {
         { id: "clock", label: t("settings.timeMode.clock") },
         { id: "elapsed", label: t("settings.timeMode.elapsed") },
       ];
+      const todoPromptOptions = [
+        { id: "prompt", label: t("settings.todoPromptOn") },
+        { id: "off", label: t("settings.todoPromptOff") },
+      ];
+      const conclusionTabOptions = [
+        { id: "newtab", label: t("settings.conclusionTabOn") },
+        { id: "off", label: t("settings.conclusionTabOff") },
+      ];
       const boolRow = (label, field) =>
         h(SettingSelect, {
           label,
@@ -5568,23 +6859,53 @@ function FileTypeIcon(props) {
           note(t("settings.timeModeNote")),
           boolRow(t("settings.stepAnchors"), "stepAnchors"),
           note(t("settings.stepAnchorsNote")),
-          boolRow(t("settings.todoPromptRow"), "todoPrompt"),
+          h(SettingSelect, {
+            label: t("settings.todoPromptRow"),
+            value: cfg.todoPrompt ? "prompt" : "off",
+            options: todoPromptOptions,
+            onPick: (id) => set("todoPrompt", id === "prompt"),
+            hint: h(
+              "button",
+              {
+                type: "button",
+                className: "dsov-set-hint",
+                title: t("settings.todoPromptHint"),
+                "aria-label": t("settings.todoPromptHint"),
+                "data-active": showDefaultPrompt ? "true" : "false",
+                onClick: () => setShowDefaultPrompt(!showDefaultPrompt),
+              },
+              h(IconInfo, { size: 13 })
+            ),
+          }),
           cfg.todoPrompt
             ? h(SettingTextarea, {
-                label: t("settings.todoPromptTemplate"),
+                label: "",
                 value: cfg.todoPromptTemplate,
-                placeholder: DEFAULT_TODO_TEMPLATE,
+                placeholder: t("settings.todoPromptPlaceholder"),
                 onCommit: (value) => set("todoPromptTemplate", value),
               })
+            : h("div", { className: "dsov-set-note dsov-set-noteWrap" }, t("settings.todoPromptPlaceholder")),
+          showDefaultPrompt
+            ? h(
+                "div",
+                { className: "dsov-set-defaultPrompt" },
+                h("div", { className: "dsov-set-defaultPromptHead" }, t("settings.todoPromptDefault")),
+                h("pre", { className: "dsov-set-defaultPromptBody" }, DEFAULT_TODO_TEMPLATE.trim())
+              )
             : null,
-          note(t("settings.todoPromptNote")),
-          cfg.todoPrompt ? note(t("settings.todoPromptTemplateNote")) : null
+          h(SettingSelect, {
+            label: t("settings.conclusionTabRow"),
+            value: cfg.conclusionTab ? "newtab" : "off",
+            options: conclusionTabOptions,
+            onPick: (id) => set("conclusionTab", id === "newtab"),
+          }),
+          note(t(cfg.conclusionTab ? "settings.conclusionTabNote" : "settings.conclusionTabOffNote"))
         ),
         group(
           t("settings.quickNav"),
           boolRow(t("settings.quickNavRow"), "quickNav"),
-          boolRow(t("settings.quickNavLinkRow"), "quickNavLink"),
           note(t("settings.quickNavNote")),
+          boolRow(t("settings.quickNavLinkRow"), "quickNavLink"),
           note(t("settings.quickNavLinkNote"))
         ),
         group(
@@ -5595,6 +6916,7 @@ function FileTypeIcon(props) {
             options: placeOptions,
             onPick: (id) => set("placement", id),
           }),
+          note(t("settings.placementNote")),
           boolRow(t("settings.fullHeightRow"), "sectionFullHeight"),
           note(t("settings.fullHeightNote"))
         ),
@@ -5664,7 +6986,7 @@ function FileTypeIcon(props) {
 .dsov-empty{font-size:12.5px;line-height:1.6;color:var(--dsw-alias-label-secondary);padding:4px 2px}
 .dsov-secBody{max-height:320px;overflow-y:auto;overflow-x:hidden;margin:0 -12px 0 -8px;padding:0 12px 0 8px}
 .dsov-section[data-full=true] .dsov-secBody{max-height:none;overflow:visible;margin:0;padding:0}
-.dsov-loading{font-size:12px;color:var(--dsw-alias-label-secondary)}
+.dsov-loading{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--dsw-alias-label-secondary)}
 .dsov-goal{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--dsw-alias-label-primary);padding:2px}
 .dsov-goalIcon{flex:none;display:inline-flex;margin-top:2px;color:var(--dsw-alias-brand-primary)}
 .dsov-goalObjective{flex:1;min-width:0;line-height:1.55;overflow-wrap:anywhere}
@@ -5716,7 +7038,39 @@ function FileTypeIcon(props) {
 .dsov-todo[data-depth]::before{content:"";position:absolute;left:-15px;top:-4px;bottom:50%;width:9px;border-left:1px solid var(--dsw-alias-border-l2);border-bottom:1px solid var(--dsw-alias-border-l2);border-bottom-left-radius:6px}
 .dsov-member[data-expandable=false]{cursor:default}
 .dsov-member[data-expandable=false]:hover{background:transparent}
-.dsov-stepChevron{flex:none;margin-right:-2px}
+.dsov-stepChevron{flex:none;margin-right:-2px;position:relative}
+.dsov-stepChevron::after{content:"";position:absolute;inset:-5px -4px}
+.dsov-stepIconSwap{position:relative;flex:none;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;cursor:pointer;border-radius:5px}
+.dsov-stepIconSwap::after{content:"";position:absolute;inset:-4px}
+.dsov-stepIconSwap>.dsov-todoIcon{transition:opacity .12s ease}
+.dsov-stepSwapChevron{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .12s ease,transform .15s ease;pointer-events:none}
+.dsov-step:hover .dsov-stepIconSwap>.dsov-todoIcon,.dsov-stepIconSwap:focus-visible>.dsov-todoIcon{opacity:0}
+.dsov-step:hover .dsov-stepSwapChevron{opacity:1}
+.dsov-stepIconSwap[data-open=true]>.dsov-todoIcon{opacity:0}
+.dsov-stepIconSwap[data-open=true] .dsov-stepSwapChevron{opacity:1}
+.dsov-stepBody{display:flex;flex-direction:column;gap:6px;margin:1px 6px 5px 21px;padding:7px 9px;border-radius:9px;background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l1)}
+.dsov-stepBodySec{display:flex;flex-direction:column;gap:2px;min-width:0}
+.dsov-stepBodyLabel{font-size:10px;line-height:14px;letter-spacing:.02em;color:var(--dsw-alias-label-tertiary)}
+.dsov-stepBodyText{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-primary);white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;max-height:168px;overflow-y:auto;overflow-x:hidden}
+.dsov-stepBodyErr{color:var(--dsw-alias-state-error-primary,#ff453a)}
+.dsov-stepBodyMeta{font-size:10px;line-height:14px;color:var(--dsw-alias-label-tertiary)}
+.dsov-stepChip{flex:none;display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:5px;font-size:10px;line-height:1;letter-spacing:.01em;white-space:nowrap}
+.dsov-stepChip[data-tone=warn]{color:var(--dsw-alias-state-warn-primary,#ff7d00);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff7d00) 13%,transparent)}
+.dsov-stepChip[data-tone=ok]{color:var(--dsw-alias-state-success-primary,#00b42a);background:color-mix(in srgb,var(--dsw-alias-state-success-primary,#00b42a) 12%,transparent)}
+.dsov-stepChip[data-tone=err]{color:var(--dsw-alias-state-error-primary,#f53f3f);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#f53f3f) 12%,transparent)}
+.dsov-stepApproval{display:flex;flex-direction:column;gap:4px;padding:6px 8px;border-radius:8px;background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff7d00) 7%,transparent);border:.5px solid color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff7d00) 26%,transparent)}
+.dsov-stepApprovalItem[data-tone=ok]{background:transparent}
+.dsov-stepApprovalHead{display:flex;align-items:center;gap:5px;min-width:0}
+.dsov-stepApprovalIcon{flex:none;display:inline-flex;color:var(--dsw-alias-label-secondary)}
+.dsov-stepApprovalName{flex:none;font-size:11px;font-weight:500;color:var(--dsw-alias-label-primary)}
+.dsov-stepApprovalTool{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;color:var(--dsw-alias-label-tertiary)}
+.dsov-stepApprovalBadge{flex:none;padding:0 5px;height:15px;display:inline-flex;align-items:center;border-radius:4px;font-size:10px;white-space:nowrap}
+.dsov-stepApprovalBadge[data-tone=warn]{color:var(--dsw-alias-state-warn-primary,#ff7d00);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff7d00) 16%,transparent)}
+.dsov-stepApprovalBadge[data-tone=ok]{color:var(--dsw-alias-state-success-primary,#00b42a);background:color-mix(in srgb,var(--dsw-alias-state-success-primary,#00b42a) 14%,transparent)}
+.dsov-stepApprovalBadge[data-tone=err]{color:var(--dsw-alias-state-error-primary,#f53f3f);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#f53f3f) 14%,transparent)}
+.dsov-stepApprovalTime{flex:none;margin-left:auto;font-size:10px;color:var(--dsw-alias-label-tertiary)}
+.dsov-stepApprovalReason{margin-left:16px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;overflow-wrap:anywhere}
+.dsov-stepApprovalOutcome{margin-left:16px;font-size:10.5px;line-height:1.45;color:var(--dsw-alias-label-tertiary);white-space:pre-wrap;overflow-wrap:anywhere;max-height:60px;overflow-y:auto}
 .dsov-compactIcon{color:var(--dsw-alias-label-secondary)}
 .dsov-todoIconSlot{position:relative;flex:none;display:inline-flex;margin-top:2px}
 .dsov-todoIconSlot .dsov-todoIcon{margin-top:0}
@@ -5728,7 +7082,8 @@ function FileTypeIcon(props) {
 .dsov-rowStatic{cursor:default}
 .dsov-rowStatic:hover{background:transparent}
 .dsov-tile{flex:none;width:28px;height:28px;border-radius:8px;background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l1);display:flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-secondary)}
-.dsov-fileIcon{flex:none;width:22px;display:inline-flex;justify-content:center}
+.dsov-fileIcon{flex:none;width:22px;display:inline-flex;justify-content:center;align-items:center}
+.dsov-fileMark{display:inline-flex;align-items:center;justify-content:center;flex:none;width:20px;height:20px;border-radius:6px;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 14%,transparent);color:var(--dsw-alias-brand-primary)}
 .dsov-fileIcon svg{display:block}
 .dsov-artifactName{flex:1;min-width:0;font-size:13px;color:var(--dsw-alias-label-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dsov-counts{flex:none;display:inline-flex;gap:6px;font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:11.5px;font-variant-numeric:tabular-nums}
@@ -5751,7 +7106,8 @@ function FileTypeIcon(props) {
 .dsov-set-link:hover{text-decoration:underline}
 .dsov-set-group-title{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:18px;letter-spacing:.02em;margin-bottom:10px}
 .dsov-set-row{align-items:center;gap:10px;padding:8px 0;display:flex}
-.dsov-set-label{min-width:0;color:var(--dsw-alias-label-primary);flex:1;font-size:13px;font-weight:400;line-height:20px}
+.dsov-set-label{min-width:0;color:var(--dsw-alias-label-primary);flex:1;font-size:13px;font-weight:400;line-height:20px;display:flex;align-items:center;gap:6px}
+.dsov-set-labelText{min-width:0;overflow-wrap:anywhere}
 .dsov-set-control{position:relative;flex:none;display:inline-flex}
 .dsov-set-select{background:var(--dsw-alias-bg-module-platform,var(--dsw-alias-bg-layer-2));height:32px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;transition:background-color var(--ds-transition-duration,.2s) var(--ds-ease-in-out,ease-in-out);border:none;border-radius:16px;align-items:center;gap:10px;padding:0 12px;font-size:13px;line-height:20px;display:inline-flex}
 .dsov-set-select:hover{background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,var(--dsw-alias-label-primary) 8%,transparent))}
@@ -5764,6 +7120,13 @@ function FileTypeIcon(props) {
 .dsov-set-menuItem[data-selected=true]{color:var(--dsw-alias-brand-primary);font-weight:500}
 .dsov-set-note{color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));margin:4px 0 0;font-size:12px;line-height:1.55}
 .dsov-set-note+.dsov-set-note{margin-top:2px}
+.dsov-set-labelText{min-width:0}
+.dsov-set-hint{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px;margin:0;padding:0;border:none;border-radius:50%;background:transparent;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));cursor:pointer;transition:color .15s ease,background-color .15s ease}
+.dsov-set-noteWrap{white-space:pre-line}
+.dsov-set-hint:hover,.dsov-set-hint[data-active=true]{color:var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 12%,transparent)}
+.dsov-set-defaultPrompt{margin:2px 0 6px;border:.5px solid var(--dsw-alias-border-l4,var(--dsw-alias-border-l2));border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-bg-layer-3,var(--dsw-alias-bg-layer-2));padding:8px 12px}
+.dsov-set-defaultPromptHead{font-size:11.5px;font-weight:600;color:var(--dsw-alias-label-secondary);margin-bottom:4px}
+.dsov-set-defaultPromptBody{max-height:220px;overflow-y:auto;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
 .dsov-set-textrow{flex-direction:column;align-items:stretch;gap:6px}
 .dsov-set-input{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l4,var(--dsw-alias-border-l2));border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-bg-layer-3,var(--dsw-alias-bg-layer-2));width:100%;color:var(--dsw-alias-label-primary);font:inherit;padding:6px 12px;font-size:13px;line-height:1.5}
 .dsov-set-input:focus{outline:none;border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 55%,transparent)}
@@ -5775,6 +7138,10 @@ function FileTypeIcon(props) {
 html[data-dsov-quicknav="on"] nav:has(button[data-index][aria-label]),html[data-dsov-quicknav="on"] nav[class*="_frame"]{display:block!important}
 html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data-dsov-quicknav="off"] nav[class*="_frame"]{display:none!important}
 .dsov-viking{box-sizing:border-box;height:100%;min-height:0;overflow-y:auto;padding:14px 16px 28px;display:flex;flex-direction:column;gap:10px}
+.dsov-docPage{box-sizing:border-box;height:100%;padding:20px 24px 40px;position:relative;overflow:auto}
+.dsov-docDocument{min-width:0;color:var(--dsw-alias-label-primary);overflow-wrap:anywhere;font-size:14px;line-height:1.75}
+.dsov-docTitleIcon{flex:none}
+@media (width<=767px){.dsov-docPage{padding:16px 18px 32px}}
 .dsov-vikingHead{display:flex;align-items:flex-start;gap:8px}
 .dsov-vikingIcon{flex:none;display:inline-flex;margin-top:2px;color:var(--dsw-alias-brand-primary)}
 .dsov-vikingHeadText{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
@@ -5854,6 +7221,51 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 .dsov-errPopTime{color:var(--dsw-alias-label-tertiary);font-size:10px;white-space:nowrap}
 .dsov-errPopDetail{color:var(--dsw-alias-label-secondary);word-break:break-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .dsov-errPopMsg{margin-top:2px;color:var(--dsw-alias-state-error-primary,#ff453a);white-space:pre-wrap;word-break:break-all;font-size:10.5px;max-height:76px;overflow-y:auto}
+.dsov-role{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 2px;font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-secondary)}
+.dsov-roleBadge{flex:none;display:inline-flex;align-items:center;padding:1px 7px;border-radius:999px;font-weight:500;color:var(--dsw-alias-brand-primary,#247bbf);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 12%,transparent)}
+.dsov-role[data-kind=sub] .dsov-roleBadge{color:var(--dsw-alias-state-warn-primary,#ff9f0a);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff9f0a) 15%,transparent)}
+.dsov-roleMode{flex:none;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10px;color:var(--dsw-alias-label-tertiary)}
+.dsov-roleBtn{display:inline-flex;align-items:center;gap:3px;flex:none;max-width:100%;min-width:0;border:none;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;padding:1px 6px;border-radius:999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color .16s ease,color .16s ease}
+.dsov-roleBtn:hover{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary)}
+.dsov-roleBtn[data-link=true]{color:var(--dsw-alias-brand-primary,#247bbf)}
+.dsov-roleBtn:disabled{cursor:default;opacity:.65}
+.dsov-roleChevron{flex:none;transition:transform .16s ease}
+.dsov-roleBtn[data-open=true] .dsov-roleChevron{transform:rotate(90deg)}
+.dsov-roleParent{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}
+.dsov-roleHint{display:inline-flex;align-items:center;gap:4px;min-width:0;color:var(--dsw-alias-label-tertiary)}
+.dsov-roleList{display:flex;flex-direction:column;gap:1px;width:100%;margin:1px 0 0}
+.dsov-roleItem{display:flex;align-items:center;gap:6px;width:100%;min-width:0;border:none;background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;padding:3px 6px;border-radius:8px}
+.dsov-roleItem:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent)}
+.dsov-roleItem:disabled{cursor:default}
+.dsov-roleDot{flex:none;width:5px;height:5px;border-radius:50%;background:color-mix(in srgb,var(--dsw-alias-label-secondary) 45%,transparent)}
+.dsov-roleDot[data-running=true]{background:var(--dsw-alias-state-success-primary,#00b42a)}
+.dsov-roleItemTitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsov-loadingReload{border:.5px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.4;padding:2px 8px;border-radius:999px;cursor:pointer;transition:background-color .16s ease,color .16s ease}
+.dsov-loadingReload:hover{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary)}
+@keyframes dsov-secIntroA{0%{opacity:0;transform:translateY(9px);box-shadow:0 0 0 1px color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 60%,transparent)}55%{opacity:1;transform:none;box-shadow:0 0 0 1px color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 45%,transparent)}100%{opacity:1;transform:none;box-shadow:0 0 0 0 transparent}}
+@keyframes dsov-secIntroB{0%{opacity:0;transform:translateY(9px);box-shadow:0 0 0 1px color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 60%,transparent)}55%{opacity:1;transform:none;box-shadow:0 0 0 1px color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 45%,transparent)}100%{opacity:1;transform:none;box-shadow:0 0 0 0 transparent}}
+.dsov-section[data-intro=even]{animation:dsov-secIntroA .44s cubic-bezier(.22,.61,.36,1) both}
+.dsov-section[data-intro=odd]{animation:dsov-secIntroB .44s cubic-bezier(.22,.61,.36,1) both}
+@keyframes dsov-turnStart{0%{opacity:0;transform:translateY(-4px)}12%{opacity:1;transform:none}80%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-2px)}}
+.dsov-turnStart{display:flex;align-items:center;gap:6px;font-size:11px;line-height:1.5;color:var(--dsw-alias-brand-primary,#247bbf);padding:0 2px;animation:dsov-turnStart 2.2s ease both}
+.dsov-turnStartDot{flex:none;width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 20%,transparent)}
+.dsov-stepChild{margin-left:21px;padding:3px 6px;border-radius:8px;align-items:flex-start;cursor:default;font-size:11.5px}
+.dsov-stepChild:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 3.5%,transparent)}
+.dsov-stepChild[data-waiting=true]{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff9f0a) 8%,transparent)}
+.dsov-stepChild .dsov-stepName{font-weight:400;color:var(--dsw-alias-label-secondary)}
+.dsov-stepChild .dsov-time{font-size:10.5px;color:var(--dsw-alias-label-tertiary)}
+.dsov-stepChild>.dsov-todoIcon{margin-top:1px;flex:none}
+.dsov-stepChildBody{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.dsov-stepChildTop{display:flex;align-items:center;gap:6px;min-width:0}
+.dsov-stepChildTool{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;color:var(--dsw-alias-label-tertiary);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.dsov-stepChildOutcome{flex:none;font-size:10px;line-height:1.6;padding:0 5px;border-radius:999px;color:var(--dsw-alias-state-success-primary,#00b42a);background:color-mix(in srgb,var(--dsw-alias-state-success-primary,#00b42a) 13%,transparent)}
+.dsov-stepChildOutcome[data-ok=false]{color:var(--dsw-alias-state-error-primary,#ff453a);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#ff453a) 13%,transparent)}
+.dsov-stepChildNote{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);white-space:normal;overflow-wrap:anywhere;word-break:break-word}
+.dsov-mermaid{margin:6px 0;text-align:center;overflow-x:auto}
+.dsov-mermaid svg{max-width:100%;height:auto}
+.dsov-mermaid .dsov-md-pre{text-align:left}
+.dsov-mermaidFailed>.dsov-md-pre{border-left:2px solid var(--dsw-alias-state-warning-primary,#e6a23c)}
+.dsov-badge[data-tone=plan]{color:var(--dsw-alias-state-success-primary,#2ea36a);border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary,#2ea36a) 45%,transparent)}
 .dsov-renderErr{margin:8px 12px 0;padding:6px 8px;border-radius:6px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-state-error-primary,#ff453a);font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;text-align:left;max-height:140px;overflow:auto}
 .dsov-turnSelect{flex:none;max-width:150px;height:24px;padding:0 22px 0 9px;border:.5px solid var(--dsw-alias-border-l2);border-radius:12px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 12px) 10px,calc(100% - 8px) 10px;background-size:4px 4px,4px 4px;background-repeat:no-repeat}
 .dsov-turnSelect:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3,var(--dsw-alias-border-l2))}
@@ -5861,11 +7273,13 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 @keyframes dsov-pulse{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes dsov-stepIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes dsov-stepOut{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-6px)}}
+@keyframes dsov-refIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.dsov-row[data-enter=true]{animation:dsov-refIn .32s ease both}
 .dsov-step[data-enter=true]{animation:dsov-stepIn .34s ease both}
 .dsov-step[data-exit=true]{position:absolute;top:0;left:0;right:0;animation:dsov-stepOut .4s ease both;pointer-events:none}
 .dsov-todoSpin{transform-origin:7.5px 7.5px;animation:dsov-spin 1.1s linear infinite}
 .dsov-todoPulse{animation:dsov-pulse 1.4s ease-in-out infinite}
-@media (prefers-reduced-motion: reduce){.dsov-todoSpin,.dsov-todoPulse,.dsov-step[data-enter=true]{animation:none}.dsov-step[data-exit=true]{animation:none;opacity:0}}
+@media (prefers-reduced-motion: reduce){.dsov-todoSpin,.dsov-todoPulse,.dsov-step[data-enter=true],.dsov-row[data-enter=true],.dsov-section[data-intro],.dsov-turnStart{animation:none}.dsov-step[data-exit=true]{animation:none;opacity:0}}
 .dsov-vikingMode{align-self:flex-start;margin-left:auto}
 .dsov-seg{flex:none;display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
 .dsov-segBtn{border:none;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;line-height:18px;padding:0 8px;border-radius:6px;cursor:pointer;white-space:nowrap}
@@ -6107,6 +7521,7 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
             kind: CONTEXT_TAB_KIND,
             patterns: [`${CONTEXT_ADDRESS_PREFIX}**`],
             priority: "builtin",
+            multiple: true,
             canOpen: (address) => parseContextAddress(address) !== undefined,
             title: (address) => {
               const key = parseContextAddress(address);
@@ -6133,6 +7548,22 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
               )
           ),
         "conversation-overview: context tab body"
+      );
+
+      ctx.effect(
+        () =>
+          ctx.slots.inject(
+            "sidebar.right.pane.tab.title",
+            () =>
+              ctx.slots.register(
+                {
+                  name: "sidebar.right.pane.tab.title",
+                  key: CONTEXT_TAB_ID,
+                },
+                ContextTabTitle
+              )
+          ),
+        "conversation-overview: context tab title"
       );
 
       ctx.effect(() => {
@@ -6297,10 +7728,31 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
       ProgressSection,
       ArtifactsSection,
       ReferencesSection,
+      ContextPreviewBody,
+      SettingsForm,
+      chatMarkdown: ChatMarkdown,
+      chatMarkdownLabels,
       StatsBar,
       ArtifactFileMenu,
       OverviewGlyph,
       OverviewContent,
+      MarkdownBody,
+      mdToHtml,
+      Section,
+      sectionIntroProps,
+      SessionRoleBar,
+      sessionRoleOf,
+      canNavigateSession,
+      openSessionById,
+      planTitleOf,
+      openNativePlan,
+      documentAddress,
+      openNativeDocument,
+      openArtifact,
+      ContextTabTitle,
+      __setRuntime: (value) => {
+        runtime = value;
+      },
       OverviewBoundary,
       SettingsForm,
       SettingsSection,
