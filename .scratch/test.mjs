@@ -6,7 +6,9 @@
  *  4. unit-checks mention/mutation/address helpers
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
@@ -525,8 +527,33 @@ function foldAll(events) {
   return T.buildState(foldFolder(events), FOLD_WINDOW, 0, "all");
 }
 
-const logs = process.argv.slice(2);
-assert.ok(logs.length > 0, "pass at least one session.v4.jsonl.zstd path");
+/* No arguments: take the two most recent real session logs from the local DSH
+   store, so the suite runs without hunting for paths by hand. */
+function discoverLogs(limit = 2) {
+  const root = join(homedir(), ".dsh", "sessions");
+  if (!existsSync(root)) return [];
+  const found = [];
+  for (const workspace of readdirSync(root, { withFileTypes: true })) {
+    if (!workspace.isDirectory()) continue;
+    const workspaceDir = join(root, workspace.name);
+    for (const session of readdirSync(workspaceDir, { withFileTypes: true })) {
+      if (!session.isDirectory()) continue;
+      const file = join(workspaceDir, session.name, "session.v4.jsonl.zstd");
+      if (!existsSync(file)) continue;
+      found.push({ file, mtime: statSync(file).mtimeMs });
+    }
+  }
+  return found
+    .sort((left, right) => right.mtime - left.mtime)
+    .slice(0, limit)
+    .map((row) => row.file);
+}
+
+const logs = process.argv.slice(2).length > 0 ? process.argv.slice(2) : discoverLogs();
+assert.ok(
+  logs.length > 0,
+  "no session log found: pass one or more session.v4.jsonl.zstd paths, or run where ~/.dsh/sessions exists"
+);
 for (const log of logs) {
   const events = loadEvents(log);
   const state = foldAll(events);
@@ -1326,4 +1353,6 @@ assert.ok(T.vikingLabel("viking://user/alice/memories/preferences/pnpm脚本运�
   T.__setRuntime({ t: (key) => key, ctx: { sessions: { list: { getSnapshot: () => null }, subagentAddress: () => undefined } } });
 }
 
+console.log(`\nchecked ${logs.length} session log(s):`);
+for (const log of logs) console.log(`  ${log}`);
 console.log("\nALL TESTS PASSED");

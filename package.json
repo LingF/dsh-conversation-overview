@@ -40,8 +40,12 @@
     "icon.svg",
     "README.md",
     "LICENSE",
-    "assets/overview.png"
+    "assets/overview.png",
+    ".scratch/test.mjs"
   ],
+  "scripts": {
+    "test": "node .scratch/test.mjs"
+  },
   "engines": {
     "dsh": ">=0.2.1-rc.2",
     "node": ">=20"
