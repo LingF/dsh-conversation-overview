@@ -52,10 +52,6 @@ dsh plugin --profile web remove dsh-conversation-overview
 
 完整记录见 [版本更新文档](https://github.com/LingF/dsh-conversation-overview/blob/main/CHANGELOG.md)。
 
-## 问题反馈
-
-遇到 Bug 或有改进建议，请提交到 [Issues](https://github.com/LingF/dsh-conversation-overview/issues)。
-
 ## License
 
 MIT © 2026 lingf
