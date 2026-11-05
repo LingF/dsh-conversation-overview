@@ -44,10 +44,17 @@ dsh plugin --profile web remove dsh-conversation-overview
 
 选项在「设置 → 会话概览」中调整，即时生效。全部 17 个字段（分区显隐、时间显示、结论标签页、里程碑置顶、提示词模板、OpenViking 预览等）见 [配置项](https://github.com/LingF/dsh-conversation-overview/blob/main/docs/CONFIGURATION.md)。
 
-## 更多
+## 版本更新
 
-- [版本更新](https://github.com/LingF/dsh-conversation-overview/blob/main/CHANGELOG.md) — 每个版本的变化
-- [问题反馈](https://github.com/LingF/dsh-conversation-overview/issues) — 提交 Bug 或建议
+- **1.5.1** — README 精简为使用者文档，配置项独立成文。
+- **1.5.0** — 会话目标横幅；结论页与对话同款排版；团队委派按词权重归属待办。
+- **1.4.1** — 修复刷新后结论页失效；区分分叉会话与子代理。
+
+完整记录见 [版本更新文档](https://github.com/LingF/dsh-conversation-overview/blob/main/CHANGELOG.md)。
+
+## 问题反馈
+
+遇到 Bug 或有改进建议，请提交到 [Issues](https://github.com/LingF/dsh-conversation-overview/issues)。
 
 ## License
 
