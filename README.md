@@ -46,9 +46,8 @@ dsh plugin --profile web remove dsh-conversation-overview
 
 ## 更多
 
-- [开发与测试](https://github.com/LingF/dsh-conversation-overview/blob/main/docs/DEVELOPMENT.md) — 代码结构、本地调试安装、运行测试、发布流程
 - [版本更新](https://github.com/LingF/dsh-conversation-overview/blob/main/CHANGELOG.md) — 每个版本的变化
-- [问题反馈](https://github.com/LingF/dsh-conversation-overview/issues)
+- [问题反馈](https://github.com/LingF/dsh-conversation-overview/issues) — 提交 Bug 或建议
 
 ## License
 

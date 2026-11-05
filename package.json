@@ -41,13 +41,9 @@
     "README.md",
     "LICENSE",
     "assets/overview.png",
-    ".scratch/test.mjs",
     "CHANGELOG.md",
     "docs/*.md"
   ],
-  "scripts": {
-    "test": "node .scratch/test.mjs"
-  },
   "engines": {
     "dsh": ">=0.2.1-rc.2",
     "node": ">=20"
