@@ -7,15 +7,22 @@ window.__ModuleLoader__.load({
 
     /* The chat surface renders Markdown with the harness' own MarkdownText, so a
        document opened by this plugin borrows that exact component when it can: same
-       fonts, spacing, code banners and tables as a message in the conversation. */
-    const ChatMarkdown = (() => {
+       fonts, spacing, code banners, tables and file links as a message in the
+       conversation. React.memo/forwardRef components are OBJECTS, not functions, so
+       the component check must accept both — a typeof-function test silently fell
+       back to the plugin renderer (raw markdown links, wrong type scale). */
+    const primitives = (() => {
       try {
-        const primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-        return primitives && typeof primitives.MarkdownText === "function" ? primitives.MarkdownText : null;
+        const module = require("@deepseek-ai/dsh-client-ui-primitives");
+        return module && typeof module === "object" ? module : null;
       } catch (error) {
         return null;
       }
     })();
+    const ChatMarkdown = primitives !== null && primitives.MarkdownText !== undefined && primitives.MarkdownText !== null ? primitives.MarkdownText : null;
+    /* The chat wraps its flow in MarkdownDelegateProvider so inline file links render
+       as clickable chips and external links open in a new tab; borrow the provider too. */
+    const ChatMarkdownProvider = primitives !== null && typeof primitives.MarkdownDelegateProvider === "function" ? primitives.MarkdownDelegateProvider : null;
 
     function cx(...parts) {
       return parts.filter((part) => typeof part === "string" && part.length > 0).join(" ");
@@ -372,6 +379,14 @@ window.__ModuleLoader__.load({
       "goal.paused": "已暂停",
       "goal.blocked": "受阻",
       "goal.complete": "已完成",
+      "goal.mode": "目标模式",
+      "goal.modeTip": "会话级目标：每轮结束后自动续跑，直到目标达成、受阻、暂停或到达轮次上限",
+      "goal.modeLine": "每轮结束后自动续跑，直到达成、受阻、暂停或到达轮次上限",
+      "goal.rounds": "自动续跑 {n} / 上限 {max} 轮",
+      "goal.roundsNoLimit": "已自动续跑 {n} 轮",
+      "goal.done": "目标已达成",
+      "goal.pausedLine": "目标已暂停，恢复后继续自动续跑",
+      "goal.blockedReason": "受阻原因：{reason}",
       "artifact.presented": "交付",
       "artifact.plan": "计划",
       "artifact.memory": "记忆",
@@ -424,7 +439,9 @@ window.__ModuleLoader__.load({
       "role.children": "子代理 {n}",
       "role.childrenToggle": "展开/收起本会话的子代理",
       "role.switchTitle": "切换到该子代理的概览",
-      "role.openParent": "查看主会话",
+      "role.openParent": "返回主代理",
+      "role.openParentHint": "查看主会话",
+      "doc.openFile": "在侧边栏打开 {name}",
       "role.openParentTitle": "切换到父会话的概览",
       "role.parentPrefix": "·",
       "state.noSession": "当前没有打开的会话",
@@ -609,6 +626,14 @@ window.__ModuleLoader__.load({
       "goal.paused": "Paused",
       "goal.blocked": "Blocked",
       "goal.complete": "Completed",
+      "goal.mode": "Goal mode",
+      "goal.modeTip": "Session goal: rounds run automatically until the goal completes, blocks, pauses, or spends its round budget",
+      "goal.modeLine": "Rounds run automatically until the goal completes, blocks, pauses, or hits the round cap",
+      "goal.rounds": "Auto rounds {n} / max {max}",
+      "goal.roundsNoLimit": "{n} auto rounds",
+      "goal.done": "Goal reached",
+      "goal.pausedLine": "Goal paused — resume to continue the auto rounds",
+      "goal.blockedReason": "Blocked: {reason}",
       "artifact.presented": "Delivered",
       "artifact.plan": "Plan",
       "artifact.memory": "Memory",
@@ -661,7 +686,9 @@ window.__ModuleLoader__.load({
       "role.children": "Subagents {n}",
       "role.childrenToggle": "Show/hide this session's subagents",
       "role.switchTitle": "Switch to this subagent's overview",
-      "role.openParent": "Open main session",
+      "role.openParent": "Back to main agent",
+      "role.openParentHint": "Open main session",
+      "doc.openFile": "Open {name} in sidebar",
       "role.openParentTitle": "Switch to the parent session's overview",
       "role.parentPrefix": "·",
       "state.noSession": "No session is open",
@@ -673,6 +700,29 @@ window.__ModuleLoader__.load({
     /* ------------------------------------------------------------------ */
 
     let runtime = null; // { ctx, t }
+
+    /* Cordis' context proxy throws for services this entry never injected, and the
+       optional ones here are enhancements (desktop actions, session navigation,
+       conversation view switching) that must degrade instead of break. `ctx.get()`
+       reads a provided service without the inject requirement. */
+    function hostService(name) {
+      const ctx = runtime === null || runtime === undefined ? null : runtime.ctx;
+      if (ctx === null || ctx === undefined || typeof name !== "string" || name === "") return null;
+      try {
+        if (typeof ctx.get === "function") {
+          const service = ctx.get(name);
+          if (service !== undefined && service !== null) return service;
+        }
+      } catch (_notProvided) {
+        /* fall through to the proxy read best effort */
+      }
+      try {
+        const service = ctx[name];
+        return service === undefined || service === null ? null : service;
+      } catch (_notInjected) {
+        return null;
+      }
+    }
 
     function translate(key, params) {
       const t = runtime && runtime.t;
@@ -855,6 +905,19 @@ window.__ModuleLoader__.load({
       return parts.join("\n");
     }
 
+    /** Closing reply text: the chat renders each text block as its own paragraph with a
+        16px gap, so a document reusing the same body must separate them by a blank line. */
+    function conclusionTextOf(content) {
+      if (!Array.isArray(content)) return "";
+      const parts = [];
+      for (const block of content) {
+        if (!isRecord(block) || block.type !== "text" || typeof block.text !== "string") continue;
+        const text = block.text.trim();
+        if (text !== "") parts.push(text);
+      }
+      return parts.join("\n\n");
+    }
+
     function collect(source, member, field) {
       const list = isRecord(source) ? source[member] : null;
       if (!Array.isArray(list)) return [];
@@ -974,18 +1037,58 @@ window.__ModuleLoader__.load({
     /* ------------------------------------------------------------------ */
 
     const desktopOpenState = { value: null, inflight: null };
+    /* `remote.session` is a cordis ACCESSOR: reading it without a declared inject
+       throws ("cannot get property \"remote.session\" without inject"), and the artifact
+       file menu reads it during render. Mount it as an optional injected dependency
+       once, keep the resolved namespace here, and degrade to no desktop actions. */
+    const desktopRemote = { session: null };
 
-    function hostSessionRemote() {
-      const ctx = runtime && runtime.ctx;
-      if (!ctx) return null;
+    function mountDesktopRemote(ctx) {
+      /* a fresh mount owns the cache: never inherit a previous host's namespace */
+      desktopRemote.session = null;
+      desktopOpenState.value = null;
+      desktopOpenState.inflight = null;
+      if (ctx === null || ctx === undefined || typeof ctx.inject !== "function") return;
+      const mount = (scoped) => {
+        let session = null;
+        /* the accessor is reachable as a flat property name, and as the nested member
+           of the `remote` service; read whichever this cordis build exposes */
+        try {
+          const direct = scoped["remote.session"];
+          if (isRecord(direct)) session = direct;
+        } catch (_flatNotInjected) {
+          session = null;
+        }
+        if (!isRecord(session)) {
+          try {
+            const remote = scoped.remote;
+            if (isRecord(remote) && isRecord(remote.session)) session = remote.session;
+          } catch (_nestedNotInjected) {
+            session = null;
+          }
+        }
+        desktopRemote.session = isRecord(session) ? session : null;
+        /* reset the cached capability probe so a re-mount re-asks the new host */
+        desktopOpenState.value = null;
+        desktopOpenState.inflight = null;
+        return () => {
+          desktopRemote.session = null;
+          desktopOpenState.value = null;
+          desktopOpenState.inflight = null;
+        };
+      };
       try {
-        /* the cordis context proxy THROWS for services this entry has not
-           injected; degrade to "no desktop actions" instead of crashing render */
-        const remote = ctx.remote;
-        return isRecord(remote) && isRecord(remote.session) ? remote.session : null;
-      } catch {
-        return null;
+        const fiber = ctx.inject(["remote", "remote.session"], mount);
+        if (fiber !== null && fiber !== undefined && typeof fiber.catch === "function") fiber.catch(() => {});
+      } catch (_unavailable) {
+        desktopRemote.session = null;
       }
+    }
+
+    /** The desktop RPC namespace, or null when the host/profile has no such route. */
+    function hostSessionRemote() {
+      const session = desktopRemote.session;
+      return isRecord(session) ? session : null;
     }
 
     function desktopCanOpen() {
@@ -1401,7 +1504,14 @@ window.__ModuleLoader__.load({
         .replace(
           /\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
           '<a href="$2" target="_blank" rel="noreferrer noopener">$1</a>'
-        );
+        )
+        /* file destinations (relative or absolute paths): never print the raw
+           `[label](path)` syntax — render the label and let the body open it */
+        .replace(/\[([^\]]+)\]\(([^)#][^)\s]*)\)/g, (match, label, destination) => {
+          if (/^[a-z][a-z\d+.-]*:/i.test(destination) && !/^[a-z]:[\\/]/i.test(destination)) return match;
+          if (!looksLikePath(destination)) return match;
+          return `<span class="dsov-md-fileLink" data-file-path="${destination.replace(/"/g, "&quot;")}">${label}</span>`;
+        });
     }
 
     /**
@@ -1760,6 +1870,8 @@ window.__ModuleLoader__.load({
         subagents: new Map(),
         stats: createStats(),
         conclusion: null,
+        goal: null,
+        goalRoundSeen: 0,
         changed: false,
       };
     }
@@ -1840,7 +1952,7 @@ window.__ModuleLoader__.load({
     }
 
     /** Markdown block that upgrades ```mermaid fences to rendered diagrams after mount. */
-    function MarkdownBody({ text }) {
+    function MarkdownBody({ text, onOpenFile }) {
       const ref = React.useRef(null);
       const html = React.useMemo(() => mdToHtml(typeof text === "string" ? text : ""), [text]);
       React.useEffect(() => {
@@ -1849,13 +1961,39 @@ window.__ModuleLoader__.load({
         const timer = setTimeout(() => renderMermaidNodes(node), 0);
         return () => clearTimeout(timer);
       }, [html]);
-      return h("div", { className: "dsov-md", ref, dangerouslySetInnerHTML: { __html: html } });
+      const onClick = (event) => {
+        if (typeof onOpenFile !== "function") return;
+        const target = event.target;
+        const link = target !== null && target !== undefined && typeof target.closest === "function" ? target.closest("[data-file-path]") : null;
+        if (link === null) return;
+        event.preventDefault();
+        onOpenFile(link.getAttribute("data-file-path") || "");
+      };
+      return h("div", { className: "dsov-md", ref, onClick, dangerouslySetInnerHTML: { __html: html } });
     }
 
-    function rememberContextPreview(sessionId, refKey, title, text, kind) {
+    /** File paths a turn produced, capped for the document tab's file chips. */
+    function docFilesOf(artifacts) {
+      const files = [];
+      for (const artifact of Array.isArray(artifacts) ? artifacts : []) {
+        if (!isRecord(artifact) || typeof artifact.path !== "string" || artifact.path === "") continue;
+        if (artifact.path.startsWith("viking://") || artifact.path.startsWith("plan:") || artifact.path.startsWith("conclusion:")) continue;
+        if (files.includes(artifact.path) || files.length >= 40) continue;
+        files.push(artifact.path);
+      }
+      return files;
+    }
+
+    function rememberContextPreview(sessionId, refKey, title, text, kind, files) {
       if (typeof sessionId !== "string" || sessionId === "" || typeof text !== "string" || text === "") return undefined;
       const globalKey = `${sessionId}|${refKey}`;
-      const entry = { title: typeof title === "string" && title !== "" ? title : refKey, text: text.length > CONTEXT_TEXT_LIMIT ? `${text.slice(0, CONTEXT_TEXT_LIMIT)}\n…` : text, ...(typeof kind === "string" && kind !== "" ? { kind } : {}) };
+      const docFiles = Array.isArray(files) ? files.filter((file) => typeof file === "string" && file !== "").slice(0, 40) : [];
+      const entry = {
+        title: typeof title === "string" && title !== "" ? title : refKey,
+        text: text.length > CONTEXT_TEXT_LIMIT ? `${text.slice(0, CONTEXT_TEXT_LIMIT)}\n…` : text,
+        ...(typeof kind === "string" && kind !== "" ? { kind } : {}),
+        ...(docFiles.length === 0 ? {} : { files: docFiles }),
+      };
       contextPreviews.set(globalKey, entry);
       /* Documents (turn conclusion, plan snapshot) open as tabs the host restores
          after a reload, and their body lives only here — mirror them into
@@ -1888,7 +2026,7 @@ window.__ModuleLoader__.load({
       try {
         const kept = readDocPreviewStore().filter((item) => item[0] !== globalKey);
         const text = entry.text.length > DOC_PREVIEW_TEXT_LIMIT ? `${entry.text.slice(0, DOC_PREVIEW_TEXT_LIMIT)}\n…` : entry.text;
-        kept.push([globalKey, { title: entry.title, text, kind: entry.kind }]);
+        kept.push([globalKey, { title: entry.title, text, kind: entry.kind, ...(Array.isArray(entry.files) && entry.files.length > 0 ? { files: entry.files.slice(0, 40) } : {}) }]);
         window.localStorage.setItem(DOC_PREVIEW_STORE_KEY, JSON.stringify(kept.slice(-DOC_PREVIEW_STORE_LIMIT)));
       } catch {
         /* storage full or unavailable: the in-memory copy still serves this page */
@@ -1903,7 +2041,12 @@ window.__ModuleLoader__.load({
       if (stored === undefined) return null;
       const revived = isRecord(stored[1]) && typeof stored[1].text === "string" ? stored[1] : null;
       if (revived === null || revived.text === "") return null;
-      const restored = { title: typeof revived.title === "string" && revived.title !== "" ? revived.title : globalKey, text: revived.text, ...(typeof revived.kind === "string" && revived.kind !== "" ? { kind: revived.kind } : {}) };
+      const restored = {
+        title: typeof revived.title === "string" && revived.title !== "" ? revived.title : globalKey,
+        text: revived.text,
+        ...(typeof revived.kind === "string" && revived.kind !== "" ? { kind: revived.kind } : {}),
+        ...(Array.isArray(revived.files) ? { files: revived.files.filter((file) => typeof file === "string" && file !== "").slice(0, 40) } : {}),
+      };
       contextPreviews.set(globalKey, restored);
       return restored;
     }
@@ -2250,47 +2393,115 @@ window.__ModuleLoader__.load({
     /* Key-step stream: every tool call is one step; the result marks it done. Shown by
        the Progress section when a turn has no todo plan of its own. */
     const STEP_CAP = 200;
+    /** Steps shown when the progress list is collapsed: the last six *gated* steps
+        (approval rows are gates of a tool call, not steps of their own) plus the
+        approvals that belong to them. Slicing the raw stream put an orphan approval
+        at the top of the window whenever the cut fell between a call and its gate. */
+    const STEP_WINDOW = 6;
+    function recentStepWindow(allSteps) {
+      const source = Array.isArray(allSteps) ? allSteps : [];
+      const picked = new Set();
+      let budget = STEP_WINDOW;
+      for (let index = source.length - 1; index >= 0 && budget > 0; index -= 1) {
+        const step = source[index];
+        if (!isRecord(step) || step.name === "approval") continue;
+        picked.add(step);
+        budget -= 1;
+      }
+      const pickedCalls = new Set();
+      for (const step of picked) if (typeof step.callId === "string" && step.callId !== "") pickedCalls.add(step.callId);
+      return source.filter((step) => {
+        if (picked.has(step)) return true;
+        return isRecord(step) && step.name === "approval" && typeof step.parentCallId === "string" && pickedCalls.has(step.parentCallId);
+      });
+    }
 
     /** One-line human target for a tool call: file, command, query, url, name… */
     /** Team-record key a tool call creates: teammate name / task subject / subagent label. */
-    /** Match team delegates (members, subagents, tasks) to todo items by normalized text
-        containment, so each delegate renders under the todo it belongs to. */
-    function planTodoAttachments(todos, members, teamTasks, subagents) {
+    /** Word/bigram tokens of one todo or delegate text: latin words plus CJK bigrams, so
+        「直播域底稿」/「直播域技术底稿分析」 share evidence without full containment. */
+    function planTokens(text) {
+      const tokens = new Set();
+      const source = String(typeof text === "string" ? text : "").toLowerCase();
+      for (const word of source.match(/[a-z][a-z0-9]{2,}/g) || []) tokens.add(word);
+      for (const run of source.match(/[\u4e00-\u9fff]+/g) || []) {
+        if (run.length === 1) tokens.add(run);
+        for (let index = 0; index + 1 < run.length; index += 1) tokens.add(run.slice(index, index + 2));
+      }
+      return tokens;
+    }
+
+    /** Index of the todo that was open (not yet completed) at `time`, from the todo log. */
+    function planActiveAt(todoHistory, time) {
+      if (!Array.isArray(todoHistory) || typeof time !== "number" || time <= 0) return null;
+      let active = null;
+      for (const record of todoHistory) {
+        if (!isRecord(record) || !Array.isArray(record.todos)) continue;
+        if (typeof record.time === "number" && record.time > time) break;
+        active = new Set();
+        record.todos.forEach((todo, index) => {
+          if (isRecord(todo) && todo.status !== "completed") active.add(index);
+        });
+      }
+      return active;
+    }
+
+    /** Match team delegates (members, subagents, tasks) to todos: IDF-weighted token
+        coverage, preferring the todo that was in progress when the delegate appeared, so
+        each delegate renders under the todo it belongs to instead of a flat tail list. */
+    function planTodoAttachments(todos, members, teamTasks, subagents, todoHistory) {
       const attachments = new Map();
       if (!Array.isArray(todos) || todos.length === 0) return attachments;
-      const normText = (value) =>
-        typeof value === "string"
-          ? value
-              .toLowerCase()
-              .replace(/[-_/]+/g, " ")
-              .replace(/[^a-z0-9\u4e00-\u9fff ]+/g, "")
-              .replace(/\s+/g, " ")
-              .trim()
-          : "";
-      const matchScore = (a, b) => {
-        const x = normText(a);
-        const y = normText(b);
-        if (x === "" || y === "") return 0;
-        if (x === y) return x.length;
-        if (x.length >= 6 && y.includes(x)) return x.length;
-        if (y.length >= 6 && x.includes(y)) return y.length;
-        return 0;
+      const todoTokens = todos.map((todo) => planTokens(isRecord(todo) ? todo.content : ""));
+      /* rare words are the evidence: 「直播域」 in one todo says more than 「多端」 in four */
+      const docFrequency = new Map();
+      for (const set of todoTokens) for (const token of set) docFrequency.set(token, (docFrequency.get(token) || 0) + 1);
+      const weightOf = (token) => Math.log((todos.length + 1) / ((docFrequency.get(token) || 0) + 0.5)) + 0.2;
+      const coverage = (tokens, index) => {
+        let covered = 0;
+        let total = 0;
+        for (const token of tokens) {
+          const weight = weightOf(token);
+          total += weight;
+          if (todoTokens[index].has(token)) covered += weight;
+        }
+        return total === 0 ? 0 : covered / total;
       };
-      const ownedBy = (id) => teamTasks.filter((task) => isRecord(task) && task.ownerId === id);
-      const bestFor = (texts) => {
+      const MATCH_MIN = 0.08;
+      const bestFor = (texts, time) => {
+        const scores = new Array(todos.length).fill(0);
         let best = -1;
-        let bestScore = 5;
-        todos.forEach((todo, index) => {
-          const content = isRecord(todo) ? todo.content : "";
-          let score = 0;
-          for (const text of texts) score = Math.max(score, matchScore(text, content));
-          if (score > bestScore) {
-            bestScore = score;
-            best = index;
+        let bestScore = MATCH_MIN;
+        for (const text of texts) {
+          const tokens = planTokens(text);
+          for (let index = 0; index < todos.length; index += 1) {
+            if (todos[index] === undefined) continue;
+            scores[index] = Math.max(scores[index], coverage(tokens, index));
+            if (scores[index] > bestScore) {
+              bestScore = scores[index];
+              best = index;
+            }
           }
-        });
+        }
+        if (best < 0) return -1;
+        /* the delegate appeared while one plan row was being worked on: prefer it */
+        const active = planActiveAt(todoHistory, time);
+        if (active !== null && active.size > 0 && !active.has(best)) {
+          let activeBest = -1;
+          let activeScore = bestScore * 0.6;
+          for (const index of active) {
+            if (todos[index] === undefined) continue;
+            if (scores[index] > activeScore) {
+              activeScore = scores[index];
+              activeBest = index;
+            }
+          }
+          if (activeBest >= 0) return activeBest;
+        }
         return best;
       };
+      const ownedBy = (id) => teamTasks.filter((task) => isRecord(task) && task.ownerId === id);
+      const timeOf = (record) => (isRecord(record) && typeof record.time === "number" ? record.time : 0);
       const attach = (index, item) => {
         const list = attachments.get(index);
         if (list === undefined) attachments.set(index, [item]);
@@ -2298,11 +2509,11 @@ window.__ModuleLoader__.load({
       };
       for (const member of members.filter(isRecord)) {
         const owned = ownedBy(member.id);
-        const index = bestFor([member.name, member.description, ...owned.map((task) => task.subject)]);
+        const index = bestFor([member.name, member.description, ...owned.map((task) => task.subject)], timeOf(member));
         if (index >= 0) attach(index, { kind: "member", record: member, owned });
       }
       for (const sub of subagents.filter(isRecord)) {
-        const index = bestFor([sub.label]);
+        const index = bestFor([sub.label], timeOf(sub));
         if (index >= 0) attach(index, { kind: "sub", record: sub, owned: [] });
       }
       const memberOwned = new Set();
@@ -2314,11 +2525,10 @@ window.__ModuleLoader__.load({
       for (const task of teamTasks.filter(isRecord)) {
         if (memberOwned.has(task.id)) continue;
         if (typeof task.ownerId === "string" && members.some((member) => isRecord(member) && member.id === task.ownerId)) continue;
-        const index = bestFor([task.subject]);
+        const index = bestFor([task.subject], timeOf(task));
         if (index >= 0) attach(index, { kind: "task", record: task, owned: [] });
       }
-      const timeOf = (item) => (isRecord(item.record) && typeof item.record.time === "number" ? item.record.time : 0);
-      for (const list of attachments.values()) list.sort((left, right) => timeOf(left) - timeOf(right));
+      for (const list of attachments.values()) list.sort((left, right) => timeOf(left.record) - timeOf(right.record));
       return attachments;
     }
 
@@ -2453,7 +2663,7 @@ window.__ModuleLoader__.load({
              {message:{content}}. Reading only the first left every real turn without a
              conclusion document, so the auto-open never fired. */
           const body = isRecord(data.message) ? data.message : data;
-          const text = (typeof body.text === "string" && body.text !== "" ? body.text : textOf(body.content)).trim();
+          const text = (typeof body.text === "string" && body.text !== "" ? body.text : conclusionTextOf(body.content)).trim();
           if (text === "") return;
           const turn = folder.currentTurn >= 1 ? folder.currentTurn : Number.isSafeInteger(data.turn) && data.turn >= 1 ? data.turn : 0;
           const bucket = folder.byTurn.get(turn) ?? turnBucket(folder, folder.currentTurn);
@@ -2496,6 +2706,29 @@ window.__ModuleLoader__.load({
           folder.todosTime = typeof event.time === "number" ? event.time : 0;
           folder.todosSeq = typeof event.seq === "number" ? event.seq : 0;
           folder.todoRecords.push({ turn: folder.currentTurn, todos, time: folder.todosTime, seq: folder.todosSeq });
+          touch(folder);
+          return;
+        }
+        case "goal/change": {
+          /* A session-level goal: every round is driven automatically until the goal
+             completes, blocks, pauses, or spends its round budget. Folding the durable
+             change lets a historical session show the same banner the live projection does. */
+          if (!isRecord(data)) return;
+          const goal = isRecord(data.goal) ? data.goal : null;
+          if (goal === null || typeof goal.objective !== "string" || goal.objective.trim() === "" || typeof goal.phase !== "string") return;
+          folder.goal = {
+            id: typeof goal.id === "string" ? goal.id : "",
+            revision: typeof goal.revision === "number" ? goal.revision : 0,
+            objective: goal.objective,
+            phase: goal.phase,
+            maxGoalRounds: typeof goal.maxGoalRounds === "number" ? goal.maxGoalRounds : 0,
+            blockedReason:
+              isRecord(goal.blockedReason) && typeof goal.blockedReason.message === "string" && goal.blockedReason.message !== "" ? goal.blockedReason.message : "",
+            roundsStarted: typeof data.roundsStarted === "number" ? data.roundsStarted : 0,
+            createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
+            updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
+            turn: folder.currentTurn,
+          };
           touch(folder);
           return;
         }
@@ -2766,6 +2999,16 @@ window.__ModuleLoader__.load({
           /* a compact checkpoint replaces the event span it summarizes; every other message must append */
           if (kind !== "compact-checkpoint" && !isAppendSurfaceEvent(event)) return;
           const bucket = turnBucket(folder, folder.currentTurn);
+          if (kind === "goal" && source !== null) {
+            /* an admitted goal round: keep the banner's round counter live even when
+               the projection (or a paused goal) lags the event log */
+            const round = typeof source.round === "number" && Number.isSafeInteger(source.round) && source.round > 0 ? source.round : 0;
+            if (round > folder.goalRoundSeen) folder.goalRoundSeen = round;
+            if (folder.goal !== null && typeof folder.goal === "object" && round > folder.goal.roundsStarted) {
+              folder.goal = { ...folder.goal, roundsStarted: round };
+              touch(folder);
+            }
+          }
           if (kind === "user") {
             const mentions = mentionsOfUserText(textOf(data.content));
             for (const label of mentions.sessions) {
@@ -2884,7 +3127,7 @@ window.__ModuleLoader__.load({
       let conclusion = null;
       if (rawConclusion !== null && typeof rawConclusion.text === "string" && rawConclusion.text !== "") {
         const title = translate("artifact.conclusionTurn", { n: rawConclusion.turn });
-        const previewKey = rememberContextPreview(folder.sessionId, `conclusion|${rawConclusion.turn}`, title, rawConclusion.text, "conclusion");
+        const previewKey = rememberContextPreview(folder.sessionId, `conclusion|${rawConclusion.turn}`, title, rawConclusion.text, "conclusion", docFilesOf(artifacts));
         conclusion = {
           path: `conclusion:${rawConclusion.turn}`,
           kind: "conclusion",
@@ -2934,7 +3177,7 @@ window.__ModuleLoader__.load({
       /* team anchor steps (spawn/task-create/subagent) stay pinned above the recent window
          so member/task rows can nest under their creating step */
       const allSteps = Array.isArray(source.steps) ? source.steps : [];
-      const recentSteps = allSteps.slice(-6);
+      const recentSteps = recentStepWindow(allSteps);
       const anchorCandidates = [...(Array.isArray(source.anchors) ? source.anchors : []), ...allSteps].filter(
         (step, index, list) =>
           isRecord(step) && typeof step.teamKey === "string" && step.milestone !== true && list.indexOf(step) === index && recentSteps.indexOf(step) === -1
@@ -2943,9 +3186,14 @@ window.__ModuleLoader__.load({
       /* milestone steps (compaction, approvals) ride the anchor lane for retention only;
          whether they pin above the window is a display choice (cfg.stepAnchors) */
       const milestoneSteps = (Array.isArray(source.anchors) ? source.anchors : []).filter((step) => isRecord(step) && step.milestone === true);
+      const goalState =
+        isRecord(folder.goal) && typeof folder.goal.objective === "string"
+          ? { ...folder.goal, roundsStarted: Math.max(typeof folder.goal.roundsStarted === "number" ? folder.goal.roundsStarted : 0, folder.goalRoundSeen || 0) }
+          : null;
       return {
         todos,
         todosTime,
+        goal: goalState,
         artifacts,
         references,
         steps: [...anchorSteps, ...recentSteps],
@@ -2968,7 +3216,7 @@ window.__ModuleLoader__.load({
       };
     }
 
-    const EMPTY_STATE = { todos: null, todosTime: 0, artifacts: [], references: [], steps: [], stepsAll: [], team: { members: [], tasks: [], subagents: [] }, stats: { durationMs: 0, toolCalls: 0, commands: 0, errors: 0, files: 0 }, turnStart: null, turnEnd: null, milestones: [], todoHistory: [], changeTurns: [], hasMore: false, localeRev: 0, turns: [], latestTurn: null, scope: "latest", scopeTurns: 1, conclusion: null };
+    const EMPTY_STATE = { todos: null, todosTime: 0, goal: null, artifacts: [], references: [], steps: [], stepsAll: [], team: { members: [], tasks: [], subagents: [] }, stats: { durationMs: 0, toolCalls: 0, commands: 0, errors: 0, files: 0 }, turnStart: null, turnEnd: null, milestones: [], todoHistory: [], changeTurns: [], hasMore: false, localeRev: 0, turns: [], latestTurn: null, scope: "latest", scopeTurns: 1, conclusion: null };
 
     function createSummaryStore(binding) {
       const source = binding.eventSource;
@@ -3128,7 +3376,49 @@ window.__ModuleLoader__.load({
       );
       if (!isRecord(value)) return null;
       const goal = value.goal;
-      return isRecord(goal) && typeof goal.objective === "string" ? goal : null;
+      if (!isRecord(goal) || typeof goal.objective !== "string" || goal.objective.trim() === "") return null;
+      return {
+        ...goal,
+        roundsStarted: typeof value.roundsStarted === "number" ? value.roundsStarted : 0,
+        createdAt: typeof value.createdAt === "number" ? value.createdAt : 0,
+        updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : 0,
+      };
+    }
+
+    /** Merge the folded goal (history) with the live projection (current truth): the
+        projection owns phase/rounds while the event log keeps a historical session's
+        banner readable. */
+    function mergeGoalState(folded, live) {
+      const recorded = isRecord(folded) && typeof folded.objective === "string" && folded.objective.trim() !== "" ? folded : null;
+      const projected = isRecord(live) && typeof live.objective === "string" && live.objective.trim() !== "" ? live : null;
+      if (recorded === null && projected === null) return null;
+      const number = (value) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+      const source = projected !== null ? projected : recorded;
+      const roundsStarted = Math.max(
+        number(projected === null ? undefined : projected.roundsStarted),
+        number(recorded === null ? undefined : recorded.roundsStarted)
+      );
+      const maxGoalRounds = Math.max(
+        number(projected === null ? undefined : projected.maxGoalRounds),
+        number(recorded === null ? undefined : recorded.maxGoalRounds)
+      );
+      const blockedReason =
+        projected !== null && typeof projected.blockedReason === "string" && projected.blockedReason !== ""
+          ? projected.blockedReason
+          : recorded !== null && typeof recorded.blockedReason === "string"
+            ? recorded.blockedReason
+            : "";
+      return {
+        id: typeof source.id === "string" ? source.id : "",
+        objective: source.objective,
+        phase: typeof source.phase === "string" ? source.phase : "",
+        maxGoalRounds,
+        roundsStarted,
+        blockedReason,
+        createdAt: Math.max(number(projected === null ? undefined : projected.createdAt), number(recorded === null ? undefined : recorded.createdAt)),
+        updatedAt: Math.max(number(projected === null ? undefined : projected.updatedAt), number(recorded === null ? undefined : recorded.updatedAt)),
+        turn: recorded !== null && typeof recorded.turn === "number" ? recorded.turn : 0,
+      };
     }
 
     /** Backfills older history. Returns true once several consecutive loads made no
@@ -4392,7 +4682,7 @@ function FileTypeIcon(props) {
           ? stepsRaw.filter(stepAt).map(stepClamped)
           : (() => {
               const visible = stepsAllRaw.filter(stepAt);
-              const recent = visible.slice(-6);
+              const recent = recentStepWindow(visible);
               const anchors = stepsRaw.filter(
                 (step) => stepAt(step) && typeof step.teamKey === "string" && step.milestone !== true && recent.indexOf(step) === -1
               );
@@ -4616,7 +4906,7 @@ function FileTypeIcon(props) {
       const consumedTasks = new Set();
       const consumedSubs = new Set();
       /* delegates matched to a todo render nested under it and skip the flat tail */
-      const todoAttachments = hasTodos && hasTeam ? planTodoAttachments(todos, members, teamTasks, subagents) : new Map();
+      const todoAttachments = hasTodos && hasTeam ? planTodoAttachments(todos, members, teamTasks, subagents, todoHistory) : new Map();
       for (const list of todoAttachments.values()) {
         for (const item of list) {
           if (item.kind === "member") {
@@ -4985,14 +5275,37 @@ function FileTypeIcon(props) {
       };
       const kids = [];
       if (goal) {
+        /* A session goal is a mode, not a todo: rounds are re-driven automatically.
+           The banner says so, carries the phase and the round budget, and names the
+           blocker/pause instead of leaving a bare objective line. */
         const phase = typeof goal.phase === "string" ? goal.phase : "";
+        const roundsStarted = typeof goal.roundsStarted === "number" && goal.roundsStarted > 0 ? goal.roundsStarted : 0;
+        const maxRounds = typeof goal.maxGoalRounds === "number" && goal.maxGoalRounds > 0 ? goal.maxGoalRounds : 0;
+        const blockedReason = phase === "blocked" && typeof goal.blockedReason === "string" ? goal.blockedReason.trim() : "";
+        const phaseLabel = GOAL_PHASE_KEYS[phase] ? t(GOAL_PHASE_KEYS[phase]) : phase || "—";
+        const fact = maxRounds > 0 ? t("goal.rounds", { n: roundsStarted, max: maxRounds }) : roundsStarted > 0 ? t("goal.roundsNoLimit", { n: roundsStarted }) : "";
+        const metaLine =
+          phase === "complete"
+            ? t("goal.done")
+            : phase === "blocked"
+              ? (blockedReason !== "" ? t("goal.blockedReason", { reason: blockedReason }) : t("goal.modeTip"))
+              : phase === "paused"
+                ? t("goal.pausedLine")
+                : t("goal.modeLine");
         kids.push(
           h(
             "div",
-            { className: "dsov-goal", key: "goal" },
-            h("span", { className: "dsov-goalIcon" }, h(IconTarget, { size: 15 })),
-            h("span", { className: "dsov-goalObjective" }, goal.objective),
-            h("span", { className: "dsov-badge", "data-tone": GOAL_PHASE_TONES[phase] ?? "idle" }, GOAL_PHASE_KEYS[phase] ? t(GOAL_PHASE_KEYS[phase]) : phase || "—")
+            { className: "dsov-goal", key: "goal", "data-phase": phase === "" ? "unknown" : phase, title: t("goal.modeTip") },
+            h(
+              "div",
+              { className: "dsov-goalHead" },
+              h("span", { className: "dsov-goalIcon" }, h(IconTarget, { size: 13 })),
+              h("span", { className: "dsov-goalMode" }, t("goal.mode")),
+              h("span", { className: "dsov-goalPhase", "data-tone": GOAL_PHASE_TONES[phase] ?? "idle" }, phaseLabel),
+              fact === "" ? null : h("span", { className: "dsov-goalFacts" }, fact)
+            ),
+            h("div", { className: "dsov-goalObjective" }, typeof goal.objective === "string" ? goal.objective : ""),
+            h("div", { className: "dsov-goalMeta", "data-phase": phase === "" ? "unknown" : phase }, metaLine)
           )
         );
       }
@@ -5939,26 +6252,71 @@ function FileTypeIcon(props) {
 
     /** Whether the workspace service can move the main conversation to another session. */
     function canNavigateSession() {
-      try {
-        const ctx = runtime === null ? null : runtime.ctx;
-        const workspace = ctx === null || ctx === undefined ? null : ctx.uiWorkspace;
-        return isRecord(workspace) && typeof workspace.openSession === "function";
-      } catch {
-        return false;
-      }
+      const workspace = hostService("uiWorkspace");
+      return isRecord(workspace) && typeof workspace.openSession === "function";
     }
 
     function openSessionById(sessionId) {
       if (typeof sessionId !== "string" || sessionId === "") return false;
+      const workspace = hostService("uiWorkspace");
+      if (!isRecord(workspace) || typeof workspace.openSession !== "function") return false;
       try {
-        const ctx = runtime === null ? null : runtime.ctx;
-        const workspace = ctx === null || ctx === undefined ? null : ctx.uiWorkspace;
-        if (!isRecord(workspace) || typeof workspace.openSession !== "function") return false;
         workspace.openSession(sessionId);
         return true;
-      } catch {
+      } catch (_navigationRejected) {
         return false;
       }
+    }
+
+    /* The host remembers the active conversation view per session under
+       `<conversation store key>.<sessionId>`, and restores it when the session is
+       revealed. Writing the overview there is what makes a subagent link land on
+       its 概览 tab instead of whatever view that session last showed. */
+    function preferSessionOverview(sessionId) {
+      if (typeof sessionId !== "string" || sessionId === "") return false;
+      try {
+        if (typeof window === "undefined" || window.localStorage === undefined) return false;
+        const key = `dsh.conversation.${sessionId}`;
+        const raw = window.localStorage.getItem(key);
+        const stored = raw === null ? {} : JSON.parse(raw);
+        const next = isRecord(stored) ? { ...stored, view: VIEW_ID } : { view: VIEW_ID };
+        window.localStorage.setItem(key, JSON.stringify(next));
+        return true;
+      } catch (_unavailable) {
+        return false;
+      }
+    }
+
+    /** Ask the running conversation to activate a view once that session is bound. */
+    function activateSessionView(sessionId, view, attempts) {
+      const sessions = hostService("sessions");
+      const conversationService = hostService("uiConversation");
+      try {
+        const binding = sessions !== null && typeof sessions.binding === "function" ? sessions.binding(sessionId) : undefined;
+        if (binding !== undefined && conversationService !== null && typeof conversationService.binding === "function") {
+          const conversation = conversationService.binding(sessionId);
+          if (conversation !== null && conversation !== undefined && typeof conversation.activate === "function") {
+            conversation.activate(view);
+            return true;
+          }
+        }
+      } catch (_notBoundYet) {
+        /* the session is still materializing: retry below */
+      }
+      if (attempts <= 0 || typeof setTimeout !== "function") return false;
+      setTimeout(() => {
+        activateSessionView(sessionId, view, attempts - 1);
+      }, 80);
+      return false;
+    }
+
+    /** Open one session and land on its 概览 (main agent ⇄ subagent navigation). */
+    function openSessionOverview(sessionId) {
+      if (typeof sessionId !== "string" || sessionId === "") return false;
+      preferSessionOverview(sessionId);
+      const opened = openSessionById(sessionId);
+      activateSessionView(sessionId, VIEW_ID, 25);
+      return opened;
     }
 
     /* Whether this session's visible scope actually involved subagents: agent-team
@@ -6013,7 +6371,7 @@ function FileTypeIcon(props) {
                     key: child.id,
                     title: canSwitch ? t("role.switchTitle") : child.title,
                     disabled: !canSwitch,
-                    onClick: canSwitch ? () => openSessionById(child.id) : undefined,
+                    onClick: canSwitch ? () => openSessionOverview(child.id) : undefined,
                   },
                   h("span", { className: "dsov-roleDot", "data-running": child.running ? "true" : "false" }),
                   h("span", { className: "dsov-roleItemTitle" }, child.title)
@@ -6030,11 +6388,11 @@ function FileTypeIcon(props) {
           canSwitch
             ? h(
                 "button",
-                { type: "button", className: "dsov-roleBtn", "data-link": "true", title: t("role.openParentTitle"), onClick: () => openSessionById(role.parentId) },
+                { type: "button", className: "dsov-roleBtn", "data-link": "true", title: t("role.openParentTitle"), onClick: () => openSessionOverview(role.parentId) },
                 t("role.openParent"),
                 h("span", { className: "dsov-roleParent" }, parentName)
               )
-            : h("span", { className: "dsov-roleHint" }, t("role.openParent"), h("span", { className: "dsov-roleParent" }, parentName)),
+            : h("span", { className: "dsov-roleHint" }, t("role.openParentHint"), h("span", { className: "dsov-roleParent" }, parentName)),
           children,
           list
         );
@@ -6070,7 +6428,44 @@ function FileTypeIcon(props) {
          host loader silently no-ops (another loader holds the lock) or a page fails. */
       const [historyRetry, setHistoryRetry] = React.useState(0);
       const historyStalled = useBackfill(binding, summary.hasMore, historyRetry);
-      const goal = useGoal(binding);
+      /* A freshly opened conversation can mount this surface before the host installs
+         its event window: the window then reads empty WITH hasMore=false, so the
+         backfill loop has nothing to do and the panel stays blank even though the
+         session already has content. Ask for the first page once in that situation. */
+      const hydratedFor = React.useRef(null);
+      React.useEffect(() => {
+        const id = binding === null || binding === undefined ? undefined : binding.sessionId;
+        if (typeof id !== "string" || id === "" || hydratedFor.current === id) return;
+        const source = binding.eventSource;
+        let window = null;
+        try {
+          window = source !== null && source !== undefined && typeof source.getSnapshot === "function" ? source.getSnapshot() : null;
+        } catch (_unavailable) {
+          window = null;
+        }
+        const size = isRecord(window) && Array.isArray(window.entries) ? window.entries.length : 0;
+        if (size > 0) {
+          hydratedFor.current = id;
+          return;
+        }
+        const row = sessionListRow(id);
+        if (row === null || row.blank === true) return;
+        hydratedFor.current = id;
+        const session = binding.session;
+        if (session === null || session === undefined) return;
+        const load = async () => {
+          try {
+            if (typeof session.loadThrough === "function") await session.loadThrough(0);
+            else if (typeof session.loadOlder === "function") await session.loadOlder();
+          } catch (_pageFailed) {
+            /* the 「重新加载」 escape hatch covers a permanent failure */
+          }
+        };
+        load();
+      }, [binding, summary]);
+      const goalProjection = useGoal(binding);
+      /* the live projection wins; a historical session falls back to the folded goal */
+      const goal = React.useMemo(() => mergeGoalState(summary.goal, goalProjection), [summary.goal, goalProjection]);
       const stats = useArtifactStats(binding, summary.changeTurns);
       const cfg = useConfig();
       const sessionId = binding ? binding.sessionId : undefined;
@@ -6402,9 +6797,58 @@ function FileTypeIcon(props) {
       }
     }
 
+    /** The host's reactive session roster (`sessions.list`), or null when unavailable. */
+    function sessionListStore() {
+      try {
+        const ctx = runtime === null || runtime === undefined ? null : runtime.ctx;
+        const sessions = ctx === null || ctx === undefined ? undefined : ctx.sessions;
+        const list = sessions === undefined || sessions === null ? undefined : sessions.list;
+        return list !== undefined && list !== null && typeof list.subscribe === "function" && typeof list.getSnapshot === "function" ? list : null;
+      } catch (_unavailable) {
+        return null;
+      }
+    }
+
+    /** One roster row for a session id (blank/running/origin/title), or null. */
+    function sessionListRow(sessionId) {
+      const list = sessionListStore();
+      if (list === null || typeof sessionId !== "string" || sessionId === "") return null;
+      try {
+        const snapshot = list.getSnapshot();
+        const byId = isRecord(snapshot) && isRecord(snapshot.byId) ? snapshot.byId : {};
+        return isRecord(byId[sessionId]) ? byId[sessionId] : null;
+      } catch (_unavailable) {
+        return null;
+      }
+    }
+
+    /** Bind the surface to its session, re-resolving while the host materializes a
+        just-opened conversation: a brand-new chat mounts the overview before the
+        session scope exists, and without this the panel stuck on 「未选择会话」. */
+    function useSessionBinding(sessionId) {
+      const list = sessionListStore();
+      const subscribe = React.useCallback((onChange) => (list === null ? () => {} : list.subscribe(onChange)), [list]);
+      const readRoster = React.useCallback(() => (list === null ? null : list.getSnapshot()), [list]);
+      React.useSyncExternalStore(subscribe, readRoster, readRoster);
+      const binding = resolveBinding(sessionId);
+      const [attempt, setAttempt] = React.useState(0);
+      React.useEffect(() => {
+        if (binding !== null || typeof sessionId !== "string" || sessionId === "") return undefined;
+        if (typeof setInterval !== "function") return undefined;
+        let tries = 0;
+        const timer = setInterval(() => {
+          tries += 1;
+          if (resolveBinding(sessionId) !== null) setAttempt((value) => value + 1);
+          if (tries >= 30) clearInterval(timer);
+        }, 100);
+        return () => clearInterval(timer);
+      }, [binding, sessionId, attempt]);
+      return binding;
+    }
+
     function OverviewSurface(props, variant) {
       const t = typeof props.t === "function" ? props.t : translate;
-      const binding = resolveBinding(props.sessionId);
+      const binding = useSessionBinding(props.sessionId);
       if (!binding) {
         return h("div", { className: variant === "panel" ? "dsov-panel" : "dsov-view" }, h("div", { className: "dsov-empty" }, t("state.noSession")));
       }
@@ -6652,6 +7096,68 @@ function FileTypeIcon(props) {
       return blocks.length > 0 ? h("div", { className: "dsov-vikingFields" }, ...blocks) : null;
     }
 
+    /** Chat parity: a document's inline file link opens the same sidebar file preview. */
+    function openDocLinkedFile(sessionId, path) {
+      if (typeof path !== "string" || path.trim() === "") return;
+      openSessionFile(typeof sessionId === "string" ? sessionId : undefined, path.trim());
+    }
+
+    /** Chat parity: external links in a document open in a new tab, like the chat's. */
+    function openDocExternalLink(url) {
+      if (typeof url !== "string" || !/^https?:/iu.test(url)) return;
+      try {
+        if (typeof window !== "undefined" && typeof window.open === "function") window.open(url, "_blank", "noopener,noreferrer");
+      } catch (_popupBlocked) {
+        /* a blocked popup must not break rendering */
+      }
+    }
+
+    /** Chat parity: inline `path` code resolves to a file chip when the turn produced it.
+        Mirrors the host resolver: an exact path or a unique basename match, never a guess
+        between two same-named files. */
+    function docFileMentionResolver(entry, sessionId, translator) {
+      const files = isRecord(entry) && Array.isArray(entry.files) ? entry.files.filter((file) => typeof file === "string" && file !== "") : [];
+      if (files.length === 0) return undefined;
+      const t = typeof translator === "function" ? translator : translate;
+      const baseName = (path) => path.replace(/\\/g, "/").split("/").pop();
+      return {
+        resolve: (value) => {
+          const text = String(typeof value === "string" ? value : "").trim().replace(/\\/g, "/").replace(/^\.\//, "");
+          if (text === "") return undefined;
+          const matches = new Set();
+          for (const file of files) if (file === text || baseName(file) === text) matches.add(file);
+          if (matches.size !== 1) return undefined;
+          const path = matches.values().next().value;
+          return {
+            title: path,
+            label: t("doc.openFile", { name: baseName(path) }),
+            open: () => {
+              if (typeof sessionId === "string" && sessionId !== "") openSessionFile(sessionId, path);
+            },
+          };
+        },
+      };
+    }
+
+    /** Chat parity: local image destinations resolve through the host file API. */
+    function docPathImages() {
+      if (typeof document === "undefined" || typeof document.baseURI !== "string") return undefined;
+      const base = document.baseURI;
+      if (!/^https?:/u.test(base) && !base.startsWith("dsh-app://app/")) return undefined;
+      return {
+        resolve: (value) => {
+          try {
+            const path = decodeURIComponent(String(typeof value === "string" ? value : "").split(/[?#]/u)[0] ?? "");
+            if (path === "" || !isAbsoluteWorkspacePath(path) || /^[/\\]{2}/u.test(path)) return undefined;
+            if (/[\u0000-\u001f\u007f]/u.test(path)) return undefined;
+            return new URL(`api/file?path=${encodeURIComponent(path)}`, base).href;
+          } catch (_bad) {
+            return undefined;
+          }
+        },
+      };
+    }
+
     /** Sidebar tab body previewing one captured context injection snapshot as markdown. */
     function ContextPreviewBody(props) {
       const t = typeof props.t === "function" ? props.t : translate;
@@ -6662,19 +7168,37 @@ function FileTypeIcon(props) {
         return h("div", { className: "dsov-viking" }, h("div", { className: "dsov-vikingError" }, t("context.unavailable")));
       }
       if (entry.kind === "conclusion") {
-        /* Just the turn's closing answer, rendered exactly as the chat renders it;
-           the page geometry mirrors the host's own Markdown document page so the
-           fallback tab reads the same as the banner-opened one. */
+        /* Just the turn's closing answer, rendered through the chat's own Markdown
+           component inside the chat's own typographic wrapper and delegate provider,
+           so the document page reads exactly like the message on the left: same font
+           ladder, same line height, same image resolution, same file chips and same
+           external links. */
+        const sessionSeparator = typeof key === "string" ? key.indexOf("|") : -1;
+        const docSessionId = sessionSeparator > 0 ? key.slice(0, sessionSeparator) : undefined;
+        const docFileMentions = docFileMentionResolver(entry, docSessionId, t);
+        const docImages = docPathImages();
+        const markdown = ChatMarkdown
+          ? h(ChatMarkdown, {
+              text: entry.text,
+              labels: chatMarkdownLabels(t),
+              ...(docFileMentions === undefined ? {} : { fileMentions: docFileMentions }),
+              ...(docImages === undefined ? {} : { pathImages: docImages }),
+            })
+          : h(MarkdownBody, { text: entry.text, onOpenFile: (path) => openDocLinkedFile(docSessionId, path) });
+        /* the chat's own link delegates: inline file links become sidebar chips,
+           external links open in a new tab */
+        const content =
+          ChatMarkdown !== null && ChatMarkdownProvider !== null
+            ? h(ChatMarkdownProvider, {
+                openFile: (path) => openDocLinkedFile(docSessionId, path),
+                openExternalLink: openDocExternalLink,
+                children: markdown,
+              })
+            : markdown;
         return h(
           "section",
           { className: "dsov-docPage", "data-doc-preview": "conclusion", "aria-label": entry.title },
-          h(
-            "div",
-            { className: "dsov-docDocument" },
-            ChatMarkdown
-              ? h(ChatMarkdown, { text: entry.text, labels: chatMarkdownLabels(t) })
-              : h(MarkdownBody, { text: entry.text })
-          )
+          h("div", { className: "dsov-docDocument" }, h("div", { className: "dsov-docChat" }, content))
         );
       }
       return h(
@@ -7090,9 +7614,29 @@ function FileTypeIcon(props) {
 .dsov-secBody{max-height:320px;overflow-y:auto;overflow-x:hidden;margin:0 -12px 0 -8px;padding:0 12px 0 8px}
 .dsov-section[data-full=true] .dsov-secBody{max-height:none;overflow:visible;margin:0;padding:0}
 .dsov-loading{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--dsw-alias-label-secondary)}
-.dsov-goal{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--dsw-alias-label-primary);padding:2px}
-.dsov-goalIcon{flex:none;display:inline-flex;margin-top:2px;color:var(--dsw-alias-brand-primary)}
-.dsov-goalObjective{flex:1;min-width:0;line-height:1.55;overflow-wrap:anywhere}
+.dsov-goal{display:flex;flex-direction:column;gap:3px;box-sizing:border-box;border:.5px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 32%,transparent);border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 6%,transparent);padding:7px 9px 8px;color:var(--dsw-alias-label-primary)}
+.dsov-goal[data-phase=paused]{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff9f0a) 40%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff9f0a) 7%,transparent)}
+.dsov-goal[data-phase=blocked]{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary,#ff453a) 40%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#ff453a) 7%,transparent)}
+.dsov-goal[data-phase=complete]{border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary,#2ea36a) 40%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-success-primary,#2ea36a) 7%,transparent)}
+.dsov-goalHead{display:flex;align-items:center;gap:5px;min-width:0}
+.dsov-goalIcon{flex:none;display:inline-flex;color:var(--dsw-alias-brand-primary)}
+.dsov-goal[data-phase=paused] .dsov-goalIcon{color:var(--dsw-alias-state-warn-primary,#ff9f0a)}
+.dsov-goal[data-phase=blocked] .dsov-goalIcon{color:var(--dsw-alias-state-error-primary,#ff453a)}
+.dsov-goal[data-phase=complete] .dsov-goalIcon{color:var(--dsw-alias-state-success-primary,#2ea36a)}
+.dsov-goalMode{flex:none;font-size:10.5px;line-height:16px;font-weight:600;color:var(--dsw-alias-brand-primary)}
+.dsov-goal[data-phase=paused] .dsov-goalMode{color:var(--dsw-alias-state-warn-primary,#ff9f0a)}
+.dsov-goal[data-phase=blocked] .dsov-goalMode{color:var(--dsw-alias-state-error-primary,#ff453a)}
+.dsov-goal[data-phase=complete] .dsov-goalMode{color:var(--dsw-alias-state-success-primary,#2ea36a)}
+.dsov-goalPhase{flex:none;font-size:9.5px;line-height:14px;padding:0 5px;border-radius:4px;border:.5px solid transparent}
+.dsov-goalPhase[data-tone=brand]{color:var(--dsw-alias-brand-primary);border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 45%,transparent)}
+.dsov-goalPhase[data-tone=warn]{color:var(--dsw-alias-state-warn-primary,#ff9f0a);border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff9f0a) 45%,transparent)}
+.dsov-goalPhase[data-tone=error]{color:var(--dsw-alias-state-error-primary,#ff453a);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary,#ff453a) 45%,transparent)}
+.dsov-goalPhase[data-tone=success]{color:var(--dsw-alias-state-success-primary,#2ea36a);border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary,#2ea36a) 45%,transparent)}
+.dsov-goalFacts{margin-left:auto;flex:none;font-size:9.5px;line-height:14px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;font-variant-numeric:tabular-nums}
+.dsov-goalObjective{font-size:12px;line-height:1.5;color:var(--dsw-alias-label-primary);overflow-wrap:anywhere}
+.dsov-goalMeta{font-size:10px;line-height:1.45;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}
+.dsov-goalMeta[data-phase=blocked]{color:var(--dsw-alias-state-error-primary,#ff453a)}
+.dsov-goalMeta[data-phase=complete]{color:var(--dsw-alias-state-success-primary,#2ea36a)}
 .dsov-badge{flex:none;font-size:10.5px;line-height:17px;padding:0 7px;border-radius:999px;border:.5px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);white-space:nowrap}
 .dsov-badge[data-tone=brand]{color:var(--dsw-alias-brand-primary);border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 45%,transparent)}
 .dsov-badge[data-tone=success]{color:var(--dsw-alias-state-success-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 45%,transparent)}
@@ -7243,6 +7787,7 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 .dsov-viking{box-sizing:border-box;height:100%;min-height:0;overflow-y:auto;padding:14px 16px 28px;display:flex;flex-direction:column;gap:10px}
 .dsov-docPage{box-sizing:border-box;height:100%;padding:20px 24px 40px;position:relative;overflow:auto}
 .dsov-docDocument{min-width:0;color:var(--dsw-alias-label-primary);overflow-wrap:anywhere;font-size:14px;line-height:1.75}
+.dsov-docChat{display:flex;flex-direction:column;font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-primary)}
 .dsov-docTitleIcon{flex:none}
 @media (width<=767px){.dsov-docPage{padding:16px 18px 32px}}
 .dsov-vikingHead{display:flex;align-items:flex-start;gap:8px}
@@ -7414,6 +7959,7 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 .dsov-md-h{font-size:14px;font-weight:600;margin:14px 0 4px;color:var(--dsw-alias-label-primary)}
 .dsov-md p{margin:4px 0}
 .dsov-md-list{margin:4px 0;padding-left:20px}
+.dsov-md-fileLink{color:var(--dsw-alias-link,var(--dsw-alias-brand-primary));cursor:pointer;text-decoration:none;border-bottom:.5px dotted currentColor}
 .dsov-md-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;background:var(--dsw-alias-bg-layer-2);border-radius:4px;padding:1px 4px}
 .dsov-md-pre{background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l1);border-radius:8px;padding:10px 12px;overflow-x:auto;margin:6px 0}
 .dsov-md-pre code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;background:none;padding:0}
@@ -7443,6 +7989,7 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 
     function apply(ctx) {
       runtime = { ctx, t: ctx.locale.bind(NS) };
+      mountDesktopRemote(ctx);
 
       ctx.effect(() => ctx.locale.register(NS, { zh, en }), "conversation-overview: dictionaries");
 
@@ -7804,6 +8351,10 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
       foldEntry,
       buildState,
       planTodoAttachments,
+      mergeGoalState,
+      planTokens,
+      planActiveAt,
+      recentStepWindow,
       vikingLabel,
       vikingRefKind,
       vikingIsDir,
@@ -7839,19 +8390,31 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
       ContextPreviewBody,
       SettingsForm,
       chatMarkdown: ChatMarkdown,
+      chatMarkdownProvider: ChatMarkdownProvider,
+      openDocLinkedFile,
+      openDocExternalLink,
       chatMarkdownLabels,
       StatsBar,
       ArtifactFileMenu,
       OverviewGlyph,
       OverviewContent,
+      OverviewSurface,
+      SessionRoleBar,
       MarkdownBody,
       mdToHtml,
       Section,
       sectionIntroProps,
-      SessionRoleBar,
       sessionRoleOf,
       canNavigateSession,
       openSessionById,
+      openSessionOverview,
+      hostService,
+      hostSessionRemote,
+      mountDesktopRemote,
+      desktopCanOpen,
+      sessionListRow,
+      sessionListStore,
+      preferSessionOverview,
       planTitleOf,
       openNativePlan,
       documentAddress,

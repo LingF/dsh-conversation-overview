@@ -1355,4 +1355,202 @@ assert.ok(T.vikingLabel("viking://user/alice/memories/preferences/pnpm脚本运�
 
 console.log(`\nchecked ${logs.length} session log(s):`);
 for (const log of logs) console.log(`  ${log}`);
+
+/* ---- 13. 子代理位置 / 步骤窗口 / 子代理概览导航 / 结论页渲染一致性 ---------- */
+{
+  /* A) 团队委派挂到「委派」这条 todo 下：IDF 词重叠 + 当时进行中的 todo 偏好 */
+  const todos = [
+    { content: "侦察项目与 Litho(deepwiki-rs) 运行方式、校验 LLM 通道", status: "completed" },
+    { content: "建立 Litho staging 副本与 litho.toml（含多端聚合知识注入）", status: "in_progress" },
+    { content: "委派两路代码分析（直播域 / 平台与边界层）产出知识底稿", status: "in_progress" },
+    { content: "编写多端聚合知识文档并注入 Litho", status: "pending" },
+    { content: "启动 Litho 生成文档（4175s，7 域 + 48 图）", status: "pending" },
+    { content: "编写 6、多端聚合与集成口子.md + 附录A + 00-README", status: "pending" },
+    { content: "质量校验：Mermaid 语法、清单链接、事实校对与编者补注", status: "pending" },
+    { content: "交付：工作区 litho-docs/ 已就绪，等待 Downloads 写入授权", status: "pending" },
+  ];
+  const todoHistory = [{ turn: 1, time: 100, todos }];
+  const members = [
+    { id: "m1", name: "live-domain-analyst", description: "直播域技术底稿分析（推拉流/TRTC/TIM/多人直播/信令/课件/成员）", phase: "active", time: 150 },
+    { id: "m2", name: "platform-analyst", description: "平台层与多端边界分析（环境矩阵/鉴权/接口域/聚合口子）", phase: "active", time: 160 },
+  ];
+  const teamTasks = [
+    { id: "t1", subject: "直播域技术底稿（供多端聚合文档与精度校验）", status: "completed", ownerId: "main-session", time: 200 },
+    { id: "t2", subject: "平台层与多端边界底稿（环境/鉴权/接口域/聚合口子）", status: "completed", ownerId: "m2", time: 210 },
+  ];
+  const plan = T.planTodoAttachments(todos, members, teamTasks, [], todoHistory);
+  assert.deepEqual([...plan.keys()], [2], "two delegates and the unowned task all land under the delegation todo");
+  assert.deepEqual(plan.get(2).filter((item) => item.kind === "member").map((item) => item.record.id), ["m1", "m2"], "both members nested");
+  assert.deepEqual(plan.get(2).filter((item) => item.kind === "task").map((item) => item.record.id), ["t1"], "the main-session task rides along");
+  /* the same delegate without the in-progress hint still matches by rare words */
+  assert.equal([...T.planTodoAttachments(todos, members, teamTasks, []).keys()].join(","), "2", "text evidence alone is enough");
+  /* a delegate whose text shares nothing with the plan stays flat */
+  assert.equal(T.planTodoAttachments(todos, [{ id: "m9", name: "unrelated", description: "zzz", phase: "active", time: 300 }], [], [], todoHistory).size, 0, "no token overlap, no attachment");
+  assert.equal(T.planTokens("直播域技术底稿").has("直播"), true, "CJK bigrams are tokens");
+  assert.equal(T.planTokens("live-domain-analyst").has("analyst"), true, "latin words are tokens");
+
+  /* B) 收起状态只按「有门禁的步骤」取窗口：审批不再吃掉槽位、也不会留下孤立首行 */
+  const flat = [];
+  for (let index = 0; index < 9; index += 1) {
+    flat.push({ name: "bash", callId: `c${index}`, done: true, time: 1000 + index * 10, parentCallId: undefined });
+    flat.push({ name: "approval", callId: `approval-${index}`, parentCallId: `c${index}`, done: true, time: 1005 + index * 10, milestone: true });
+  }
+  /* boundary: an approval whose parent was evicted */
+  const orphan = { name: "approval", callId: "approval-orphan", parentCallId: "c0", done: true, time: 2000, milestone: true };
+  const windowed = T.recentStepWindow([...flat, orphan]);
+  assert.equal(windowed.filter((step) => step.name === "bash").length, 6, "six gated tool steps");
+  assert.deepEqual(windowed.map((step) => step.callId).slice(0, 2), ["c3", "approval-3"], "the window opens on a gated tool call, never an orphan approval");
+  assert.equal(windowed.some((step) => step.callId === "approval-orphan"), false, "an approval without its call stays out of the window");
+  /* buildState uses the same rule end to end */
+  const ev = (type, data, seq, time) => ({ type, data, seq, time });
+  const folder = T.createFolder();
+  folder.sessionId = "s-window";
+  for (let index = 0; index < 9; index += 1) {
+    T.foldEntry(folder, { type: "durable", event: ev("tool/call", { callId: `c${index}`, name: "bash", arguments: "{}" }, 10 + index * 3, 1000 + index * 10) }, "/w");
+    T.foldEntry(folder, { type: "durable", event: ev("approval/asked", { id: `ap${index}`, callId: `c${index}`, toolName: "bash" }, 11 + index * 3, 1002 + index * 10) }, "/w");
+    T.foldEntry(folder, { type: "durable", event: ev("approval/decided", { id: `ap${index}`, outcome: "allowed-once" }, 12 + index * 3, 1004 + index * 10) }, "/w");
+  }
+  folder.changed = false;
+  const state = T.buildState(folder, { hasMore: false, entries: [] }, 0, "all");
+  assert.equal(state.steps.filter((step) => step.name === "bash").length, 6, "session window keeps six tool steps");
+  const windowCalls = new Set(state.steps.filter((step) => typeof step.callId === "string").map((step) => step.callId));
+  assert.equal(state.steps[0].name, "bash", "first visible step is a tool call, never an orphan approval");
+  for (const step of state.steps) {
+    if (step.name === "approval") assert.ok(windowCalls.has(step.parentCallId), `approval ${step.callId} nested under a visible call`);
+  }
+
+  /* C) 代理身份的子代理项 → 该子代理的概览；子代理页返回主代理 */
+  const localStorageStub = { store: new Map(), getItem: (key) => (localStorageStub.store.has(key) ? localStorageStub.store.get(key) : null), setItem: (key, value) => localStorageStub.store.set(key, String(value)) };
+  globalThis.window.localStorage = localStorageStub;
+  const opened = [];
+  const activated = [];
+  T.__setRuntime({
+    t: (key) => key,
+    ctx: {
+      sidebarRight: { openResource: () => {} },
+      uiWorkspace: { openSession: (id) => opened.push(id) },
+      sessions: { binding: (id) => ({ sessionId: id }), list: null },
+      uiConversation: { binding: (id) => ({ activate: (view) => activated.push(`${id}:${view}`) }) },
+    },
+  });
+  assert.equal(T.openSessionOverview("child-1"), true, "subagent item opens its session");
+  assert.deepEqual(opened, ["child-1"], "workspace moved to the child session");
+  assert.equal(localStorageStub.getItem("dsh.conversation.child-1"), JSON.stringify({ view: "overview" }), "child session preference selects the overview");
+  assert.deepEqual(activated, ["child-1:overview"], "conversation view activated immediately");
+  assert.equal(T.openSessionOverview("parent-1"), true, "return-to-main navigates back");
+  assert.deepEqual(opened, ["child-1", "parent-1"]);
+  assert.equal(localStorageStub.getItem("dsh.conversation.parent-1"), JSON.stringify({ view: "overview" }), "parent lands on its overview too");
+  assert.ok(clientSource.includes("openSessionOverview(child.id)"), "role list items use the overview navigation");
+  assert.ok(clientSource.includes("openSessionOverview(role.parentId)"), "subagent bar returns to the main agent's overview");
+  assert.ok(clientSource.includes('"role.openParent": "返回主代理"'), "return button says 返回主代理");
+  delete globalThis.window.localStorage;
+  T.__setRuntime(null);
+
+  /* D) 结论页 = 对话里的渲染：宿主 MarkdownText + 对话排版壳 + 文件 chip/图片解析 */
+  assert.ok(clientSource.includes(".dsov-docChat{display:flex;flex-direction:column;font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))"), "document page borrows the chat's typographic wrapper");
+  assert.ok(clientSource.includes("fileMentions: docFileMentions"), "inline file paths become the chat's file chips");
+  /* host components are React.memo objects: a typeof-function test silently disabled
+     the whole host-renderer path (raw markdown links, wrong type scale in the tab) */
+  assert.ok(clientSource.includes("primitives.MarkdownText !== undefined && primitives.MarkdownText !== null"), "memo/forwardRef host components are accepted");
+  assert.ok(clientSource.includes("primitives.MarkdownDelegateProvider"), "chat link delegates are borrowed");
+  assert.ok(clientSource.includes("openDocLinkedFile") && clientSource.includes("openDocExternalLink"), "file/external link delegates are wired");
+  assert.ok(clientSource.includes("pathImages: docImages"), "local images resolve through the host file API");
+  const produced = ["/w/src/a.md", "/w/src/b.vue"];
+  const docKey = T.rememberContextPreview("s-doc", "conclusion|3", "第 3 轮结论", "改动落在 `b.vue` 与 `src/a.md`。", "conclusion", produced);
+  const docEntry = T.readContextPreview(docKey);
+  assert.deepEqual(docEntry.files, produced, "document snapshot keeps the turn's produced files");
+  assert.equal(T.rememberContextPreview("s-doc", "ref|1", "runtime-context", "plain", undefined).includes("ref|1"), true, "reference snapshots carry no file list");
+
+  /* E) 概览必须等到会话 binding 才渲染，并在空窗口时主动拉一页 */
+  assert.ok(clientSource.includes("function useSessionBinding"), "binding resolution is reactive");
+  assert.ok(clientSource.includes("React.useSyncExternalStore(subscribe, readRoster, readRoster)"), "session roster re-renders the surface");
+  assert.ok(clientSource.includes("hydratedFor.current === id"), "empty window hydration is guarded per session");
+  T.__setRuntime({ t: (key) => key, ctx: { sessions: { list: { subscribe: () => () => {}, getSnapshot: () => ({ ids: ["s1"], byId: { s1: { id: "s1", blank: false } } }) } } } });
+  assert.equal(T.sessionListRow("s1").blank, false, "roster row is readable");
+  assert.equal(T.sessionListRow("missing"), null, "unknown session has no row");
+  T.__setRuntime(null);
+  globalThis.window.localStorage = undefined;
+}
+
+
+/* ---- 14. 目标模式：折叠 + 投影合并 + 可选服务反射访问 ---------------------- */
+{
+  const ev = (type, data, seq, time) => ({ type, data, seq, time });
+  const W = "/w";
+  const win = { hasMore: false, entries: [] };
+  const folder = T.createFolder();
+  folder.sessionId = "s-goal";
+  const goal = { id: "goal-1", revision: 1, objective: "给列表加下载按钮", phase: "active", maxGoalRounds: 256 };
+  T.foldEvent(folder, ev("turn/start", { turn: 1 }, 1, 100), W);
+  T.foldEvent(folder, ev("goal/change", { operation: "create", goal, roundsStarted: 0, createdAt: 110, updatedAt: 110 }, 2, 110), W);
+  T.foldEvent(folder, ev("user/message", { source: { kind: "goal", goalId: "goal-1", revision: 1, round: 1 }, content: [{ type: "text", text: "<goal_round>Objective: 给列表加下载按钮" }] }, 3, 120), W);
+  T.foldEvent(folder, ev("tool/call", { callId: "c1", name: "bash", arguments: "{}" }, 4, 130), W);
+  T.foldEvent(folder, ev("turn/end", { turn: 1 }, 5, 140), W);
+  folder.changed = false;
+  const mid = T.buildState(folder, win, 0, "latest");
+  assert.ok(mid.goal !== null, "goal state is exposed");
+  assert.equal(mid.goal.objective, "给列表加下载按钮");
+  assert.equal(mid.goal.phase, "active", "folded phase");
+  assert.equal(mid.goal.maxGoalRounds, 256, "round budget folded");
+  assert.equal(mid.goal.roundsStarted, 1, "admitted goal round bumps the counter");
+  assert.equal(mid.goal.createdAt, 110, "creation time folded");
+  T.foldEvent(folder, ev("goal/change", { operation: "complete", goal: { ...goal, revision: 2, phase: "complete" }, roundsStarted: 1, createdAt: 110, updatedAt: 200 }, 6, 200), W);
+  folder.changed = false;
+  assert.equal(T.buildState(folder, win, 0, "latest").goal.phase, "complete", "later change wins");
+  /* projection merge */
+  const merged = T.mergeGoalState(
+    { objective: "给列表加下载按钮", phase: "active", maxGoalRounds: 256, roundsStarted: 1, blockedReason: "", createdAt: 110, updatedAt: 150, turn: 1 },
+    { objective: "给列表加下载按钮", phase: "blocked", blockedReason: "缺少凭据", maxGoalRounds: 256, roundsStarted: 3, createdAt: 110, updatedAt: 180 }
+  );
+  assert.equal(merged.phase, "blocked", "live projection owns the phase");
+  assert.equal(merged.roundsStarted, 3, "live round counter wins");
+  assert.equal(merged.blockedReason, "缺少凭据");
+  assert.equal(merged.updatedAt, 180);
+  const historyOnly = T.mergeGoalState({ objective: "老目标", phase: "complete", maxGoalRounds: 10, roundsStarted: 2, blockedReason: "", createdAt: 1, updatedAt: 2, turn: 3 }, null);
+  assert.equal(historyOnly.objective, "老目标", "historical goal survives without a projection");
+  assert.equal(T.mergeGoalState(null, null), null, "no goal anywhere");
+  assert.equal(T.mergeGoalState({ objective: "   " }, null), null, "blank objective is not a goal");
+
+  /* hostService: cordis contexts throw for non-injected services; ctx.get is the way in */
+  const throwing = {
+    get: (name) => (name === "uiWorkspace" ? { openSession: () => true } : undefined),
+    get uiWorkspace() {
+      throw new Error("cannot get property without inject");
+    },
+  };
+  T.__setRuntime({ t: (key) => key, ctx: throwing });
+  assert.equal(T.hostService("uiWorkspace") !== null, true, "ctx.get serves the optional service");
+  assert.equal(T.hostService("uiConversation"), null, "absent service reads as null");
+  assert.equal(T.hostService("remote"), null, "desktop remote absent → null, not a throw");
+
+  /* remote.session is a cordis ACCESSOR: reading it undeclared throws, and the artifact
+     render path reads it — it must be mounted through an inject and degrade to null. */
+  assert.equal(T.hostSessionRemote(), null, "no mount → no desktop route");
+  const scopedSession = { canOpenWorkspacePath: async () => ({ ok: true, value: true }) };
+  T.mountDesktopRemote({ inject: (deps, callback) => { callback({ "remote.session": scopedSession }); return Promise.resolve(); } });
+  assert.equal(T.hostSessionRemote(), scopedSession, "declared inject resolves the desktop namespace");
+  T.mountDesktopRemote({ get: () => ({ get session() { throw new Error('cannot get property "remote.session" without inject'); } }) });
+  assert.equal(T.hostSessionRemote(), null, "a guarded accessor degrades instead of throwing");
+  T.mountDesktopRemote({
+    inject: (deps, callback) => {
+      callback({ remote: { get session() { throw new Error('cannot get property "remote.session" without inject'); } } });
+      return Promise.resolve();
+    },
+  });
+  assert.equal(T.hostSessionRemote(), null, "nested accessor guard is survived too");
+  T.mountDesktopRemote({
+    inject: (deps, callback) => {
+      callback({
+        get "remote.session"() {
+          throw new Error('cannot get property "remote.session" without inject');
+        },
+      });
+      return Promise.resolve();
+    },
+  });
+  assert.equal(T.hostSessionRemote(), null, "flat accessor guard is survived as well");
+  assert.equal(T.desktopCanOpen() instanceof Promise, true, "capability probe stays async and safe");
+  T.__setRuntime(null);
+}
+
 console.log("\nALL TESTS PASSED");
