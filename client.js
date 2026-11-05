@@ -204,7 +204,7 @@ window.__ModuleLoader__.load({
     const zh = {
       "view.tab": "概览",
       "panel.title": "概览",
-      "guide.title": "会话概览",
+      "guide.title": "对话概览",
       "guide.description": "进展、产物与引用",
       "section.progress": "进展",
       "section.artifacts": "产物",
@@ -239,7 +239,7 @@ window.__ModuleLoader__.load({
       "artifacts.viewAll": "查看所有改动",
       "settings.summary": "控制概览的板块与显示位置",
       "settings.nav": "概览",
-      "settings.pageTitle": "会话概览（dsh-conversation-overview）",
+      "settings.pageTitle": "对话概览（dsh-conversation-overview）",
       "settings.sections": "板块显示",
       "settings.showProgress": "进展（任务与待办）",
       "settings.showArtifacts": "产物（本次对话产出）",

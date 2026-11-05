@@ -1,10 +1,10 @@
-# dsh-conversation-overview
+# dsh-conversation-overview · 对话概览
 
 DeepSeek Harness（DSH）插件：在对话旁增加「概览」标签页，把一个会话折叠成 **进展 / 产物 / 引用** 三块可读摘要。
 
 An Overview tab for DeepSeek Harness: folds a session into progress, artifacts, and references.
 
-![会话概览截图](https://cdn.jsdelivr.net/npm/dsh-conversation-overview@1/assets/overview.png)
+![对话概览截图](https://cdn.jsdelivr.net/npm/dsh-conversation-overview@1/assets/overview.png)
 
 ## 功能特性
 
@@ -42,11 +42,11 @@ dsh plugin --profile web remove dsh-conversation-overview
 
 ## 配置
 
-选项在「设置 → 会话概览」中调整，即时生效。全部 17 个字段（分区显隐、时间显示、结论标签页、里程碑置顶、提示词模板、OpenViking 预览等）见 [配置项](https://github.com/LingF/dsh-conversation-overview/blob/main/docs/CONFIGURATION.md)。
+选项在「设置 → 对话概览」中调整，即时生效。全部 17 个字段（分区显隐、时间显示、结论标签页、里程碑置顶、提示词模板、OpenViking 预览等）见 [配置项](https://github.com/LingF/dsh-conversation-overview/blob/main/docs/CONFIGURATION.md)。
 
 ## 版本更新
 
-- **1.5.1** — README 精简为使用者文档，配置项独立成文。
+- **1.5.1** — 中文名统一为「对话概览」；README 精简为使用者文档，配置项独立成文。
 - **1.5.0** — 会话目标横幅；结论页与对话同款排版；团队委派按词权重归属待办。
 - **1.4.1** — 修复刷新后结论页失效；区分分叉会话与子代理。
 
