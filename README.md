@@ -1,153 +1,55 @@
 # dsh-conversation-overview
 
-DeepSeek Harness（DSH）插件：在对话/轨迹旁增加「概览」标签页，并在右侧边栏提供同名面板，把一个会话折叠成三块可读的摘要——**进展**（目标、任务计划、关键步骤）、**产物**（生成/交付的文件与变更审阅）、**引用**（上下文注入、记忆、技能、文件、会话引用）。
+DeepSeek Harness（DSH）插件：在对话旁增加「概览」标签页，把一个会话折叠成 **进展 / 产物 / 引用** 三块可读摘要。
 
-> An Overview tab beside Chat/Trajectory plus a matching right-sidebar page for DeepSeek Harness: session progress (goal, todos, key steps), artifacts, and references (context injections, memories, skills, files), with per-turn scoping and OpenViking memory preview.
+An Overview tab for DeepSeek Harness: folds a session into progress, artifacts, and references.
 
 ![会话概览截图](https://cdn.jsdelivr.net/npm/dsh-conversation-overview@1/assets/overview.png)
 
 ## 功能特性
 
-- **进展**：会话目标横幅（目标模式、自动续跑轮次/上限、阶段与受阻原因）与任务计划进度；本轮关键步骤（可展开全部、展开查看命令与输出/耗时/错误、等待确认高亮、里程碑可置顶，折叠窗口按「有门禁的步骤」取最近 6 条，不会把孤立审批留在顶部）；团队成员与子代理按对应待办归属；双击待办生成重跑提示词；主代理/子代理一键切到对方的概览。
-- **产物**：生成/交付文件列表、按轮次的变更审阅入口、系统定位与「打开方式」；本轮结束可自动把结论作为 Markdown 文档开在新标签（计划内容亦有快照，刷新后正文仍在）——文档页用与对话完全相同的排版组件渲染（字号阶梯、行高、图片、文件 chip 一致），文件链接点击即在侧边栏打开预览，外链走新标签。
-- **引用**：上下文注入、OpenViking 记忆（侧边栏内预览）、技能、文件与会话引用；类型筛选、隐藏常见项、排序（最近/类型/轮次/次数）。
-- **统计与时间轴**：轮次统计胶囊（用时/调用/命令/改动文件/失败，失败可点击查看详情）；打开时间轴拖到任意时间点，回看当时的进展、产物与引用。
-- **Markdown 预览**：结论与记忆文档支持 Mermaid 图渲染、代码块复制、脚注与自动换行。
-- **轮次导航**：范围选择器（最新 / 第 N 轮 / 全部），与内置轮次导航轨双向联动。
-- **设置**：DSH 设置独立分区 + 插件行内配置，选项即时生效；问题反馈入口与新版本徽标。
+- **进展**：会话目标与目标模式、待办进度、本轮关键步骤、团队成员；双击待办可生成重跑提示词。
+- **产物**：文件与变更列表、按轮次审阅；本轮结束可把结论作为 Markdown 文档开在新标签，排版与对话一致，文件链接点开即预览。
+- **引用**：上下文注入、OpenViking 记忆、技能、文件、会话；可筛选与排序。
+- **回看**：时间轴拖动还原任意时刻；范围可切「最新 / 第 N 轮 / 全部」，与内置轮次导航轨联动。
+- **预览**：Markdown 与 Mermaid 渲染、代码块复制。
 
 ## 安装
 
-要求 DSH `>= 0.2.1-rc.2`（Web GUI）。
-
-方式一：在 DSH 会话中让 Agent 执行插件管理器的 `install_bundle`，安装目标填：
-
-```
-dsh-conversation-overview
-```
-
-方式二：GUI「插件管理」中选择安装 bundle，输入上面的 npm 包名（或 `dsh-conversation-overview@latest`）。
-
-方式三：已全局安装 DSH（终端可用 `dsh` 命令）时，用 CLI 安装进指定 profile（`web` 为 profile 名，按需替换；该命令等价于在 profile 目录执行 pnpm）：
+DSH 需 `>= 0.2.1-rc.2`（Web GUI）。
 
 ```bash
 dsh plugin --profile web add dsh-conversation-overview
 ```
 
-CLI 安装后重启 `dsh` 生效（方式一/二安装后刷新浏览器页面即可）。
+重启 `dsh` 生效。也可在 GUI「插件管理」中安装同名 bundle，或在会话里让 Agent 用插件管理器的 `install_bundle` 安装（这两种装完刷新页面即可）。
 
-安装后在「设置 → 会话概览」或插件行内配置中调整选项；对话页刷新即可看到「概览」标签页与右侧边栏入口。
+若之前用 `link:` 装过本地开发副本，请先移除再安装——两者插件行 id 相同，不应同时启用。
 
-> 注意：若此前用 `link:` 装过本地开发副本（同名包指向你的工作目录），请先移除再安装本包——两者使用相同的插件行 id（`conversation-overview`）与插槽 key，不应同时启用。判断方法：`grep dsh-conversation-overview ~/.dsh/profiles/web/package.json`，出现 `link:/…` 即为开发版。
-
-**插件更新**：
-
-- CLI（已全局安装 DSH）：
-
-  ```bash
-  dsh plugin --profile web update dsh-conversation-overview
-  # 或指定最新版重装：dsh plugin --profile web add dsh-conversation-overview@latest
-  # 卸载：dsh plugin --profile web remove dsh-conversation-overview
-  ```
-
-  更新后重启 `dsh` 生效。
-
-- GUI / 会话内：在 DSH 会话中让 Agent 依次执行插件管理器的 `remove_bundle`（target: `dsh-conversation-overview`）→ `install_bundle`（target: `dsh-conversation-overview@latest`），或在 GUI「插件管理」中移除后重新安装最新版。更新后刷新浏览器页面；若新版本增加了配置字段或宿主端代码有改动，需重启一次 DSH。
-
-## 配置项
-
-| 字段 | 默认 | 说明 |
-| --- | --- | --- |
-| `showProgress` | `true` | 显示「进展」分区 |
-| `showArtifacts` | `true` | 显示「产物」分区 |
-| `showReferences` | `true` | 显示「引用」分区 |
-| `showStats` | `true` | 显示轮次统计胶囊（用时、工具调用等） |
-| `timeMode` | `clock` | 时间显示：`clock` 时间点 / `elapsed` 本轮计时（从 0s 起） |
-| `stepAnchors` | `false` | 里程碑步骤置顶：上下文压缩/用户审批/失败调用固定在关键步骤顶部 |
-| `conclusionTab` | `true` | 本轮结束后把结论作为 Markdown 文档自动开在新标签（关闭后仍可从「产物」点开） |
-| `placement` | `both` | 显示位置：`conversation` 对话页 / `sidebar` 侧边栏 / `both` |
-| `sectionFullHeight` | `false` | 分区完整展示（关闭时限高 320px、内部滚动） |
-| `todoPrompt` | `true` | 双击待办行生成重执行提示词并填入输入框 |
-| `todoPromptTemplate` | `""` | 自定义提示词模板；留空用内置模板，支持 `{index}`、`{content}` 占位符 |
-| `quickNav` | `true` | 强制显示内置轮次导航轨（关闭为强制隐藏） |
-| `quickNavLink` | `true` | 点击导航轨刻度联动概览切换到对应轮次 |
-| `vikingPreview` | `true` | 启用 `viking://` 记忆侧边栏预览 |
-| `vikingUrl` | `http://127.0.0.1:1933` | OpenViking HTTP API 地址 |
-| `vikingAccount` | `""` | OpenViking 账户（预览记忆必填） |
-| `vikingUser` | `""` | OpenViking 用户（预览记忆必填） |
-
-## 开发与测试
-
-### 代码结构
-
-包内**没有构建步骤**，两个源文件直接就是发布物：
-
-| 文件 | 运行位置 | 职责 |
-| --- | --- | --- |
-| `index.js` | Host（Node） | schemastery 配置字段定义、`dsh-resource://` 资源定位与 Host 侧数据接口 |
-| `client.js` | 浏览器（Web UI） | 概览页/侧边栏 UI、会话事件折叠、标签页注册，以 `window.__ModuleLoader__` 工厂函数形式被加载 |
-
-改完文件后：Host 侧（`index.js`、`cordis.patch.yml` 的配置项）需要**重启 DSH** 才生效；纯客户端（`client.js`）**刷新页面**即可。
-
-### 本地调试安装
+## 更新
 
 ```bash
-# 让 profile 直接引用本地目录（改完刷新即生效，不必反复装包）
-dsh plugin --profile web add link:/absolute/path/to/dsh-conversation-overview
-
-# 确认装的是开发版而不是 npm 版
-grep dsh-conversation-overview ~/.dsh/profiles/web/package.json   # 应看到 link:/…
+dsh plugin --profile web update dsh-conversation-overview
 ```
 
-### 运行测试
+或重装最新版：`dsh plugin --profile web add dsh-conversation-overview@latest`。更新后重启 `dsh`；若新版本增加了配置字段或改了宿主端，必须重启一次。
 
-测试脚本随包发布，无需构建、无需联网。它会在 Node 里用桩（stub）替代浏览器环境——`window`、`localStorage`、`React`——然后加载 `client.js`，对**真实会话日志**做一遍完整折叠并断言结果。
+## 卸载
 
 ```bash
-# 默认自动取本机最近的 2 个会话日志
-npm test
-
-# 或指定任意日志（可传多个，跨会话、跨工作区都行）
-node .scratch/test.mjs ~/.dsh/sessions/<workspace>/<session-id>/session.v4.jsonl.zstd \
-                       ~/.dsh/sessions/<workspace>/<other-session-id>/session.v4.jsonl.zstd
+dsh plugin --profile web remove dsh-conversation-overview
 ```
 
-- 依赖 **Node ≥ 20** 与 **`zstdcat`**（日志是 zstd 压缩的；macOS：`brew install zstd`）。
-- 会话日志位置：`~/.dsh/sessions/<工作区>/<session-id>/session.v4.jsonl.zstd`，每一轮对话都在里面。
-- 全部通过时输出 `ALL TESTS PASSED`，并列出实际检查了哪几个日志；任一断言失败会直接给出断言信息与所在行号。
+## 配置
 
-### 测试覆盖范围
+选项在「设置 → 会话概览」中调整，即时生效。全部 17 个字段（分区显隐、时间显示、结论标签页、里程碑置顶、提示词模板、OpenViking 预览等）见 [配置项](https://github.com/LingF/dsh-conversation-overview/blob/main/docs/CONFIGURATION.md)。
 
-共 16 组、约 460 条断言，全部离线运行：
+## 更多
 
-| # | 覆盖内容 |
-| --- | --- |
-| 1 | `zh`/`en` 词典键完全对齐（少一个键就失败，避免界面出现原始 key） |
-| 2 | `apply()` 在 mock `ctx` 上注册了哪些标签页/插槽，以及每个配置开关的显隐效果 |
-| 3 | 用真实日志跑完整折叠：待办、关键步骤、产物、引用、统计、里程碑 |
-| 4 | 地址解析、助手提及、变更事件等纯函数 |
-| 5 | 文件类型分类与工作区变更聚合 |
-| 6 | OpenViking 预览与 Markdown 渲染 |
-| 7 | frontmatter、面包屑、引用排序 |
-| 8 | 按轮次折叠（`latest` / `all` 两种范围）与上下文快照 |
-| 9 | 全量引用识别（正文里出现过的资源是否都被收集） |
-| 10 | 关键步骤流与轮次导航轨的联动刻度 |
-| 11 | 「新标签打开」确实落到宿主自己的 Markdown 文档页 |
-| 12 | 「本轮结论」只在该轮结束后出现 |
-| 13 | 结论自动打开：只在观察到该轮实际运行后打开一次（刷新不会重开） |
-| 14 | 子代理相关界面只在真有子代理工作时出现（压缩里程碑不算） |
-| 15 | 文档标签刷新后仍能恢复正文（结论/计划快照镜像到 `localStorage`） |
-| 16 | 代理身份判定：`origin: "subagent"` 才是子代理，分叉/续聊会话算主会话 |
-
-> 这些断言同时充当回归护栏：改动 `client.js` 的折叠或显隐逻辑后先跑 `npm test`，比在浏览器里逐个点要快得多。
-
-## 版本更新
-
-- **1.5.0**：会话目标横幅（目标模式、自动续跑轮次/上限、阶段与受阻原因）；文档页改用与对话相同的 Markdown 组件与排版壳（文件 chip 点击开侧边栏预览、外链新标签、多段正文正确分段）；团队委派按 IDF 词重叠归属到对应待办；关键步骤折叠窗口按「有门禁的步骤」取最近 6 条；代理身份互跳对方概览；等待会话绑定期间不再出现空白概览。
-- **1.4.2**：补齐「开发与测试」文档，测试脚本随包发布（`npm test` 可直接运行）。
-- **1.4.1**：修复刷新后结论标签退化为失效空页；区分「分叉会话」与「子代理会话」，不再误显示子代理徽标。
-- **1.4.0**：结论标签页、Mermaid/Markdown 预览、步骤详情展开、计划快照、子代理角色导航。
+- [开发与测试](https://github.com/LingF/dsh-conversation-overview/blob/main/docs/DEVELOPMENT.md) — 代码结构、本地调试安装、运行测试、发布流程
+- [版本更新](https://github.com/LingF/dsh-conversation-overview/blob/main/CHANGELOG.md) — 每个版本的变化
+- [问题反馈](https://github.com/LingF/dsh-conversation-overview/issues)
 
 ## License
 
-MIT © 2026
+MIT © 2026 lingf
