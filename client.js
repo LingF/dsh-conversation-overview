@@ -367,6 +367,49 @@ window.__ModuleLoader__.load({
       "stats.errors.list": "失败详情（{n}）",
       "stats.errors.truncated": "仅列出步骤窗口内的失败",
       "stats.errors.close": "关闭",
+      "stats.more": "更多",
+      "stats.more.title": "本轮统计：步数、模型、用时与 Token 用量",
+      "stats.more.head": "本轮统计",
+      "stats.more.headAll": "会话统计",
+      "stats.more.turn": "第 {n} 轮",
+      "stats.more.allTurns": "全部轮次",
+      "stats.more.turns": "轮数",
+      "stats.more.turnsValue": "{n} 轮",
+      "stats.more.turnsHint": "轮数：至少有一个已结束步（step/end）的轮次数。",
+      "stats.more.steps": "步数",
+      "stats.more.stepsValue": "{n} 步",
+      "stats.more.stepsHint": "步数：该轮 step/end 事件数，与宿主统计中的「步」一致。",
+      "stats.more.model": "模型",
+      "stats.more.modelHint": "模型：该轮 assistant/message 上报的提供方/模型，按首次出现顺序去重。",
+      "stats.more.unknown": "—",
+      "stats.more.firstToken": "本轮首字延迟",
+      "stats.more.firstTokenHint": "本轮首字延迟：本轮第一个 step/start → 本轮第一个输出 token（文本、推理或工具调用）的时间，包含请求组装与排队。",
+      "stats.more.llmTime": "模型用时",
+      "stats.more.llmTimeHint": "模型用时：各步 step/start → assistant/message 的累计时长；未落定消息的步不计。",
+      "stats.more.toolTime": "工具用时",
+      "stats.more.toolTimeHint": "工具用时：tool/call → tool/result 按 callId 配对后的累计时长。",
+      "stats.more.ttft": "首 token 平均",
+      "stats.more.ttftHint": "首 token 平均：各步 step/start → 该步第一个输出 token（文本、推理或工具调用）的平均等待，只计有首 token 的步，与宿主同口径。",
+      "stats.more.speed": "输出速度",
+      "stats.more.speedValue": "{v} tok/s",
+      "stats.more.speedHint": "输出速度：首 token → 消息落定期间，输出 token ÷ 解码时长。",
+      "stats.more.tokens": "Token 用量",
+      "stats.more.tokenTotal": "总量",
+      "stats.more.tokenValue": "{count} tok",
+      "stats.more.tokensHint": "Token 用量：提供方上报的 usage 累计；总量 = 未缓存输入 + 缓存读取 + 缓存写入 + 输出。",
+      "stats.more.cacheHit": "缓存命中",
+      "stats.more.cacheHitHint": "缓存命中：缓存读取 ÷（未缓存输入 + 缓存读取 + 缓存写入）。",
+      "stats.more.input": "未缓存输入",
+      "stats.more.inputHint": "未缓存输入：每次请求中未被缓存命中的 prompt token。",
+      "stats.more.cacheRead": "缓存读取",
+      "stats.more.cacheReadHint": "缓存读取：命中前缀缓存、按缓存价计费的 prompt token。",
+      "stats.more.cacheWrite": "缓存写入",
+      "stats.more.cacheWriteHint": "缓存写入：写入缓存的 prompt token，部分提供方不上报。",
+      "stats.more.output": "输出",
+      "stats.more.outputHint": "输出：模型生成的 completion token，含推理。",
+      "stats.more.reasoning": "其中推理",
+      "stats.more.reasoningHint": "推理：输出 token 中属于推理过程的部分，部分提供方不上报。",
+      "stats.more.close": "关闭统计",
       "reference.types": "类型",
       "reference.types.title": "按类型筛选",
       "reference.types.all": "全部类型",
@@ -614,6 +657,49 @@ window.__ModuleLoader__.load({
       "stats.errors.list": "Failure details ({n})",
       "stats.errors.truncated": "Only failures within the step window are listed",
       "stats.errors.close": "Close",
+      "stats.more": "More",
+      "stats.more.title": "Turn statistics: steps, model, timings and token usage",
+      "stats.more.head": "Turn statistics",
+      "stats.more.headAll": "Session statistics",
+      "stats.more.turn": "Turn {n}",
+      "stats.more.allTurns": "All turns",
+      "stats.more.turns": "Turns",
+      "stats.more.turnsValue": "{n} turns",
+      "stats.more.turnsHint": "Turns: turns with at least one closed step (step/end).",
+      "stats.more.steps": "Steps",
+      "stats.more.stepsValue": "{n} steps",
+      "stats.more.stepsHint": "Steps: step/end events in this scope, the harness's step count.",
+      "stats.more.model": "Model",
+      "stats.more.modelHint": "Models: provider/model reported by assistant/message, deduplicated in first-seen order.",
+      "stats.more.unknown": "—",
+      "stats.more.firstToken": "First token",
+      "stats.more.firstTokenHint": "Time from this turn's first step/start to its first output token (text, reasoning or tool call), including request assembly and queueing.",
+      "stats.more.llmTime": "Model time",
+      "stats.more.llmTimeHint": "Summed step/start to assistant/message wall time; steps whose message never settled are not counted.",
+      "stats.more.toolTime": "Tool time",
+      "stats.more.toolTimeHint": "Summed tool/call to tool/result wall time, paired by callId.",
+      "stats.more.ttft": "Avg first token",
+      "stats.more.ttftHint": "Average step/start to first output token per step (text, reasoning or tool call), over steps that reported a first token; matches the harness rule.",
+      "stats.more.speed": "Output speed",
+      "stats.more.speedValue": "{v} tok/s",
+      "stats.more.speedHint": "Output tokens divided by decode time from the first token to the assembled message.",
+      "stats.more.tokens": "Token usage",
+      "stats.more.tokenTotal": "Total",
+      "stats.more.tokenValue": "{count} tok",
+      "stats.more.tokensHint": "Provider-reported usage; total = uncached input + cache read + cache write + output.",
+      "stats.more.cacheHit": "Cache hit",
+      "stats.more.cacheHitHint": "Cache read divided by (uncached input + cache read + cache write).",
+      "stats.more.input": "Uncached input",
+      "stats.more.inputHint": "Prompt tokens that were not served from cache.",
+      "stats.more.cacheRead": "Cache read",
+      "stats.more.cacheReadHint": "Prompt tokens served from the prefix cache, billed at the cache rate.",
+      "stats.more.cacheWrite": "Cache write",
+      "stats.more.cacheWriteHint": "Prompt tokens written to cache; not every provider reports them.",
+      "stats.more.output": "Output",
+      "stats.more.outputHint": "Generated completion tokens, including reasoning.",
+      "stats.more.reasoning": "Reasoning",
+      "stats.more.reasoningHint": "Output tokens spent on reasoning; not every provider reports them.",
+      "stats.more.close": "Close statistics",
       "reference.types": "Types",
       "reference.types.title": "Filter by type",
       "reference.types.all": "All types",
@@ -1883,7 +1969,7 @@ window.__ModuleLoader__.load({
     }
 
     function createTurnBucket() {
-      return { artifacts: new Map(), refs: new Map(), refOrder: [], changes: [], steps: [], anchors: [], members: new Map(), teamTasks: new Map(), subagents: new Map(), stats: createStats(), conclusion: null, lastReply: null, ended: false };
+      return { artifacts: new Map(), refs: new Map(), refOrder: [], changes: [], steps: [], anchors: [], members: new Map(), teamTasks: new Map(), subagents: new Map(), stats: createStats(), metrics: createTurnMetrics(), conclusion: null, lastReply: null, ended: false };
     }
 
     const EMPTY_BUCKET = Object.freeze({ artifacts: new Map(), refs: new Map(), refOrder: [], changes: [], steps: [], anchors: [], members: new Map(), teamTasks: new Map(), subagents: new Map(), stats: Object.freeze(createStats()) });
@@ -1895,6 +1981,315 @@ window.__ModuleLoader__.load({
         folder.byTurn.set(turn, bucket);
       }
       return bucket;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Per-turn session statistics (the 「更多」 panel)                    */
+    /* ------------------------------------------------------------------ */
+
+    /** The readings behind the chat's session-statistics pill, folded per turn:
+        closed steps, model/tool wall time, first-token latency, decode throughput
+        and provider-reported token usage. The rules mirror the host's
+        `sessionStats` / `tokenUsage` folds so both surfaces agree. */
+    function createTurnMetrics() {
+      return {
+        steps: 0,
+        llmMs: 0,
+        toolMs: 0,
+        ttftMs: 0,
+        ttftSteps: 0,
+        decodeMs: 0,
+        decodeTokens: 0,
+        /* the turn's first step/start and the first token after it: 「本轮首字延迟」 */
+        firstStepStartTime: null,
+        firstTokenMs: null,
+        tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, samples: 0 },
+        routes: [],
+        openStep: null,
+        pendingCalls: new Map(),
+      };
+    }
+
+    /** Record the turn's very first output token once; later steps never overwrite it.
+        The clock starts at the turn's first `step/start`, so the wait includes that
+        step's request assembly, not the pause between turns. */
+    function recordTurnFirstToken(metrics, tokenTime) {
+      if (tokenTime === null || metrics.firstTokenMs !== null || metrics.firstStepStartTime === null) return;
+      metrics.firstTokenMs = Math.max(0, tokenTime - metrics.firstStepStartTime);
+    }
+
+    /** Whether one stream chunk carries the model's first output token (the host's
+        `isTokenDelta`): non-empty text/reasoning delta, or a tool-call delta that
+        already names its tool. */
+    function isTokenDelta(chunk) {
+      switch (chunk.type) {
+        case "text-delta":
+        case "reasoning-delta":
+          return chunk.text !== "";
+        case "tool-call-delta":
+          return chunk.argumentsDelta !== "" || chunk.name !== undefined;
+        default:
+          return false;
+      }
+    }
+
+    /** Time of the first token in one compact durable stream, expanding packed
+        delta runs through their `dt` gaps exactly like the host helper. */
+    function streamFirstTokenTime(stream) {
+      if (!Array.isArray(stream)) return null;
+      for (const record of stream) {
+        if (!isRecord(record)) continue;
+        if (record.type === "chunk") {
+          if (isRecord(record.chunk) && isTokenDelta(record.chunk) && typeof record.time === "number") return record.time;
+          continue;
+        }
+        if (record.type === "text-chunks" || record.type === "reasoning-chunks") {
+          const texts = Array.isArray(record.texts) ? record.texts : [];
+          const dt = Array.isArray(record.dt) ? record.dt : [];
+          let time = typeof record.time0 === "number" ? record.time0 : null;
+          for (let index = 0; index < texts.length && time !== null; index += 1) {
+            if (index > 0) time += typeof dt[index - 1] === "number" ? dt[index - 1] : 0;
+            if (texts[index] !== "") return time;
+          }
+          continue;
+        }
+        if (record.type === "tool-call-chunks") {
+          if (typeof record.time0 !== "number") continue;
+          if (record.name !== undefined) return record.time0;
+          const args = Array.isArray(record.args) ? record.args : [];
+          const dt = Array.isArray(record.dt) ? record.dt : [];
+          let time = record.time0;
+          for (let index = 0; index < args.length; index += 1) {
+            if (index > 0) time += typeof dt[index - 1] === "number" ? dt[index - 1] : 0;
+            if (args[index] !== "") return time;
+          }
+        }
+      }
+      return null;
+    }
+
+    /** The last raw chunk of one never-packed type in a compact stream. */
+    function lastStreamChunk(stream, type) {
+      if (!Array.isArray(stream)) return null;
+      for (let index = stream.length - 1; index >= 0; index -= 1) {
+        const record = stream[index];
+        if (isRecord(record) && record.type === "chunk" && isRecord(record.chunk) && record.chunk.type === type) return record.chunk;
+      }
+      return null;
+    }
+
+    /** A provider count, or null when the adapter did not report a usable value. */
+    function usableCount(value) {
+      return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+    }
+
+    /** Fold one provider usage sample into a turn's token buckets. */
+    function addTurnTokens(metrics, usage) {
+      if (!isRecord(usage)) return;
+      const input = usableCount(usage.inputTokens);
+      const output = usableCount(usage.outputTokens);
+      if (input === null || output === null) return;
+      metrics.tokens.input += input;
+      metrics.tokens.output += output;
+      const cacheRead = usableCount(usage.cacheReadTokens);
+      const cacheWrite = usableCount(usage.cacheWriteTokens);
+      const reasoning = usableCount(usage.reasoningTokens);
+      if (cacheRead !== null) metrics.tokens.cacheRead += cacheRead;
+      if (cacheWrite !== null) metrics.tokens.cacheWrite += cacheWrite;
+      if (reasoning !== null) metrics.tokens.reasoning += reasoning;
+      metrics.tokens.samples += 1;
+    }
+
+    /** Read one stream's trailing usage chunk, when the adapter embedded one. */
+    function streamUsage(stream) {
+      const chunk = lastStreamChunk(stream, "usage");
+      return chunk !== null && isRecord(chunk.usage) ? chunk.usage : null;
+    }
+
+    /** Fold the boundary events that carry per-turn session statistics. Runs beside
+        the display fold: it only reads event data, never changes the message view. */
+    function foldTurnMetrics(folder, event) {
+      if (!isRecord(event) || !isRecord(event.data)) return;
+      const data = event.data;
+      const time = typeof event.time === "number" && Number.isFinite(event.time) ? event.time : null;
+      const turnOf = () => {
+        if (typeof data.turn === "number" && Number.isSafeInteger(data.turn) && data.turn >= 1) return data.turn;
+        return folder.currentTurn >= 1 ? folder.currentTurn : null;
+      };
+      switch (event.type) {
+        case "step/start": {
+          const turn = turnOf();
+          if (turn === null || time === null) return;
+          const metrics = turnBucket(folder, turn).metrics;
+          metrics.openStep = { turn, step: typeof data.step === "number" ? data.step : 0, startTime: time, firstTokenTime: null };
+          if (metrics.firstStepStartTime === null) metrics.firstStepStartTime = time;
+          touch(folder);
+          return;
+        }
+        case "assistant/attempt": {
+          const turn = turnOf();
+          if (turn === null) return;
+          const metrics = turnBucket(folder, turn).metrics;
+          const open = metrics.openStep;
+          if (open === null || open.turn !== turn || open.step !== data.step) return;
+          if (open.firstTokenTime === null) open.firstTokenTime = streamFirstTokenTime(data.stream);
+          recordTurnFirstToken(metrics, open.firstTokenTime);
+          return;
+        }
+        case "assistant/message": {
+          const turn = turnOf();
+          if (turn === null) return;
+          const metrics = turnBucket(folder, turn).metrics;
+          const sample = isRecord(data.usage) ? data.usage : streamUsage(data.stream);
+          addTurnTokens(metrics, sample);
+          const body = isRecord(data.message) ? data.message : null;
+          const source = body !== null && isRecord(body.source) ? body.source : null;
+          if (source !== null && typeof source.provider === "string" && source.provider !== "" && typeof source.model === "string" && source.model !== "") {
+            const route = `${source.provider}/${source.model}`;
+            if (!metrics.routes.includes(route)) metrics.routes.push(route);
+          }
+          const open = metrics.openStep;
+          if (open !== null && open.turn === turn && open.step === data.step && time !== null) {
+            metrics.llmMs += Math.max(0, time - open.startTime);
+            const firstToken = open.firstTokenTime !== null ? open.firstTokenTime : streamFirstTokenTime(data.stream);
+            recordTurnFirstToken(metrics, firstToken);
+            if (firstToken !== null) {
+              metrics.ttftMs += Math.max(0, firstToken - open.startTime);
+              metrics.ttftSteps += 1;
+              const outputTokens = sample === null ? null : usableCount(sample.outputTokens);
+              if (outputTokens !== null) {
+                metrics.decodeMs += Math.max(0, time - firstToken);
+                metrics.decodeTokens += outputTokens;
+              }
+            }
+            metrics.openStep = null;
+          }
+          touch(folder);
+          return;
+        }
+        case "tool/call": {
+          const turn = turnOf();
+          const callId = typeof data.callId === "string" && data.callId !== "" ? data.callId : null;
+          if (turn === null || callId === null || time === null) return;
+          turnBucket(folder, turn).metrics.pendingCalls.set(callId, time);
+          return;
+        }
+        case "tool/result": {
+          const turn = turnOf();
+          const message = isRecord(data.message) ? data.message : null;
+          const source = message !== null && isRecord(message.source) ? message.source : null;
+          const callId =
+            source !== null && typeof source.callId === "string" && source.callId !== ""
+              ? source.callId
+              : typeof data.callId === "string" && data.callId !== ""
+                ? data.callId
+                : null;
+          if (turn === null || callId === null || time === null) return;
+          const metrics = turnBucket(folder, turn).metrics;
+          const dispatched = metrics.pendingCalls.get(callId);
+          if (dispatched === undefined) return;
+          metrics.pendingCalls.delete(callId);
+          metrics.toolMs += Math.max(0, time - dispatched);
+          return;
+        }
+        case "step/end": {
+          const turn = turnOf();
+          if (turn === null) return;
+          const metrics = turnBucket(folder, turn).metrics;
+          metrics.steps += 1;
+          metrics.openStep = null;
+          touch(folder);
+          return;
+        }
+        case "turn/end": {
+          const turn = turnOf();
+          if (turn === null) return;
+          const metrics = turnBucket(folder, turn).metrics;
+          /* A call whose result never landed belongs to a cancelled turn. */
+          metrics.pendingCalls.clear();
+          metrics.openStep = null;
+          return;
+        }
+        default:
+          return;
+      }
+    }
+
+    /** Snapshot one turn's metrics for the 「更多」 panel. */
+    function turnDetailOf(turn, metrics) {
+      if (!isRecord(metrics)) return null;
+      const tokens =
+        metrics.tokens.samples > 0
+          ? {
+              input: metrics.tokens.input,
+              output: metrics.tokens.output,
+              cacheRead: metrics.tokens.cacheRead,
+              cacheWrite: metrics.tokens.cacheWrite,
+              reasoning: metrics.tokens.reasoning,
+              total: metrics.tokens.input + metrics.tokens.output + metrics.tokens.cacheRead + metrics.tokens.cacheWrite,
+            }
+          : null;
+      return {
+        scope: "turn",
+        turn,
+        turns: 1,
+        steps: metrics.steps,
+        llmMs: metrics.llmMs,
+        toolMs: metrics.toolMs,
+        ttftMs: metrics.ttftMs,
+        ttftSteps: metrics.ttftSteps,
+        firstTokenMs: metrics.firstTokenMs,
+        decodeMs: metrics.decodeMs,
+        decodeTokens: metrics.decodeTokens,
+        models: metrics.routes.slice(),
+        tokens,
+      };
+    }
+
+    /** Sum every observed turn into one session-wide detail (the 「全部轮次」 scope).
+        A turn counts once it has a closed step, matching the host's counter. */
+    function aggregateTurnDetail(entries) {
+      const totals = { scope: "all", turn: null, turns: 0, steps: 0, llmMs: 0, toolMs: 0, ttftMs: 0, ttftSteps: 0, firstTokenMs: null, decodeMs: 0, decodeTokens: 0, models: [], tokens: null };
+      let input = 0;
+      let output = 0;
+      let cacheRead = 0;
+      let cacheWrite = 0;
+      let reasoning = 0;
+      let samples = 0;
+      const models = [];
+      for (const metrics of entries) {
+        if (!isRecord(metrics)) continue;
+        totals.steps += metrics.steps;
+        if (metrics.steps > 0) totals.turns += 1;
+        totals.llmMs += metrics.llmMs;
+        totals.toolMs += metrics.toolMs;
+        totals.ttftMs += metrics.ttftMs;
+        totals.ttftSteps += metrics.ttftSteps;
+        totals.decodeMs += metrics.decodeMs;
+        totals.decodeTokens += metrics.decodeTokens;
+        input += metrics.tokens.input;
+        output += metrics.tokens.output;
+        cacheRead += metrics.tokens.cacheRead;
+        cacheWrite += metrics.tokens.cacheWrite;
+        reasoning += metrics.tokens.reasoning;
+        samples += metrics.tokens.samples;
+        for (const route of metrics.routes) if (!models.includes(route)) models.push(route);
+      }
+      totals.models = models;
+      totals.tokens = samples > 0 ? { input, output, cacheRead, cacheWrite, reasoning, total: input + output + cacheRead + cacheWrite } : null;
+      return totals;
+    }
+
+    /** The 「更多」 detail for the current selection: one turn, or every loaded turn. */
+    function turnDetailFor(folder, selection, latestTurn) {
+      if (selection === "all") {
+        const entries = [...folder.byTurn.entries()].filter(([turn, bucket]) => turn >= 1 && isRecord(bucket) && isRecord(bucket.metrics)).map(([, bucket]) => bucket.metrics);
+        return entries.length > 0 ? aggregateTurnDetail(entries) : null;
+      }
+      const turn = selection.startsWith("turn:") ? Number.parseInt(selection.slice(5), 10) : latestTurn;
+      if (typeof turn !== "number" || !Number.isSafeInteger(turn) || turn < 1) return null;
+      const bucket = folder.byTurn.get(turn);
+      return bucket === undefined || !isRecord(bucket.metrics) ? null : turnDetailOf(turn, bucket.metrics);
     }
 
     /** Snapshot text for context-injection previews, keyed by session plus reference key. */
@@ -2630,6 +3025,9 @@ window.__ModuleLoader__.load({
     function foldEvent(folder, event, cwd) {
       if (!isRecord(event) || typeof event.type !== "string") return;
       const data = event.data;
+      /* Session statistics fold in parallel: boundary events (step, stream, tool
+         and usage records) never reach the message fold below. */
+      foldTurnMetrics(folder, event);
       /* Tool work after a reply proves that reply was not the turn's closing word:
          the candidate stays provisional until a fresh reply replaces it. */
       if ((event.type === "tool/call" || event.type === "tool/result") && folder.currentTurn >= 1) {
@@ -3212,11 +3610,13 @@ window.__ModuleLoader__.load({
         scope,
         /* how many turns this scope spans: "all" covers the session, a turn view spans 1 */
         scopeTurns: source === folder ? turns.length : 1,
+        /* the 「更多」 panel's per-turn (or per-session) session statistics */
+        turnDetail: turnDetailFor(folder, scope, latestTurn),
         conclusion,
       };
     }
 
-    const EMPTY_STATE = { todos: null, todosTime: 0, goal: null, artifacts: [], references: [], steps: [], stepsAll: [], team: { members: [], tasks: [], subagents: [] }, stats: { durationMs: 0, toolCalls: 0, commands: 0, errors: 0, files: 0 }, turnStart: null, turnEnd: null, milestones: [], todoHistory: [], changeTurns: [], hasMore: false, localeRev: 0, turns: [], latestTurn: null, scope: "latest", scopeTurns: 1, conclusion: null };
+    const EMPTY_STATE = { todos: null, todosTime: 0, goal: null, artifacts: [], references: [], steps: [], stepsAll: [], team: { members: [], tasks: [], subagents: [] }, stats: { durationMs: 0, toolCalls: 0, commands: 0, errors: 0, files: 0 }, turnStart: null, turnEnd: null, milestones: [], todoHistory: [], changeTurns: [], hasMore: false, localeRev: 0, turns: [], latestTurn: null, scope: "latest", scopeTurns: 1, turnDetail: null, conclusion: null };
 
     function createSummaryStore(binding) {
       const source = binding.eventSource;
@@ -6001,33 +6401,139 @@ function FileTypeIcon(props) {
       return `${seconds}s`;
     }
 
-    /** Left-hand stat pills on the scope row: duration, tool calls, commands, files, failures. */
-    function StatsBar({ stats, t, canTimeline, timelineOpen, scrubbing, onToggleTimeline, prevJump, onPrevTurn, failedSteps }) {
-      /* failure details popover: hooks must run before any early return */
-      const failed = Array.isArray(failedSteps) ? failedSteps.filter((step) => isRecord(step)) : [];
-      /* fixed-position popover: the toolbar wrappers clip absolutely positioned
-         children (overflow hidden/auto), so anchor to the viewport instead */
-      const [errPop, setErrPop] = React.useState(null);
-      const errOpen = isRecord(errPop);
-      const errRef = React.useRef(null);
-      const errBtnRef = React.useRef(null);
-      /* Place the fixed popover under its pill, clamped into the viewport. */
-      const placePopover = React.useCallback(() => {
-        const button = errBtnRef.current;
+    /** Sub-minute durations keep one decimal so first-token latency stays readable. */
+    function formatDurationPrecise(ms) {
+      const seconds = Math.max(0, (Number.isFinite(ms) ? ms : 0) / 1000);
+      if (seconds < 60) return `${Math.round(seconds * 10) / 10}s`;
+      const whole = Math.round(seconds);
+      return `${Math.floor(whole / 60)}m ${String(whole % 60).padStart(2, "0")}s`;
+    }
+
+    /** Compact token count, matching the host pills: 517 / 12.2K / 1.2M. */
+    function formatTokensCompact(value) {
+      const count = Math.max(0, Math.round(Number.isFinite(value) ? value : 0));
+      const scaled = (candidate) => (candidate >= 100 ? String(Math.round(candidate)) : String(Math.round(candidate * 10) / 10));
+      if (count < 1e3) return String(count);
+      if (count < 1e6) return `${scaled(count / 1e3)}K`;
+      return `${scaled(count / 1e6)}M`;
+    }
+
+    /** Exact token count with thousands separators for the breakdown rows. */
+    function formatTokenGroups(value) {
+      const digits = String(Math.max(0, Math.round(Number.isFinite(value) ? value : 0)));
+      const groups = [];
+      for (let end = digits.length; end > 0; end -= 3) groups.unshift(digits.slice(Math.max(0, end - 3), end));
+      return groups.join(",");
+    }
+
+    /** Decode throughput: whole tokens from ten up, one decimal below. */
+    function formatTokensPerSecond(tps) {
+      const clamped = Math.max(0, Number.isFinite(tps) ? tps : 0);
+      return clamped >= 10 ? String(Math.round(clamped)) : String(Math.round(clamped * 10) / 10);
+    }
+
+    /** Cache-read share of prompt-side input; partial hits never round up to 100%. */
+    function cacheHitPercentOf(tokens) {
+      const prompt = tokens.input + tokens.cacheRead + tokens.cacheWrite;
+      if (prompt <= 0 || tokens.cacheRead <= 0) return null;
+      if (tokens.cacheRead >= prompt) return 100;
+      const rounded = Math.round((tokens.cacheRead / prompt) * 1000) / 10;
+      return rounded >= 100 ? 99.9 : rounded;
+    }
+
+    /** Rows of the 「更多」 panel: one turn's session statistics in reading order.
+        Section rows carry `section: true` and render as a group heading. */
+    function turnDetailRows(detail, t) {
+      if (!isRecord(detail)) return [];
+      const rows = [];
+      if (detail.scope === "all") {
+        rows.push({ key: "turns", label: t("stats.more.turns"), value: t("stats.more.turnsValue", { n: detail.turns }), hint: t("stats.more.turnsHint") });
+      }
+      rows.push({ key: "steps", label: t("stats.more.steps"), value: t("stats.more.stepsValue", { n: detail.steps }), hint: t("stats.more.stepsHint") });
+      rows.push({
+        key: "model",
+        label: t("stats.more.model"),
+        value: detail.models.length > 0 ? detail.models.join(", ") : t("stats.more.unknown"),
+        hint: t("stats.more.modelHint"),
+      });
+      /* turn-only: no single start point exists once the scope aggregates turns */
+      if (detail.scope === "turn" && detail.firstTokenMs !== null) {
+        rows.push({ key: "firstToken", label: t("stats.more.firstToken"), value: formatDurationPrecise(detail.firstTokenMs), hint: t("stats.more.firstTokenHint") });
+      }
+      if (detail.llmMs > 0) rows.push({ key: "llm", label: t("stats.more.llmTime"), value: formatDurationPrecise(detail.llmMs), hint: t("stats.more.llmTimeHint") });
+      if (detail.toolMs > 0) rows.push({ key: "tool", label: t("stats.more.toolTime"), value: formatDurationPrecise(detail.toolMs), hint: t("stats.more.toolTimeHint") });
+      if (detail.ttftSteps > 0) {
+        rows.push({ key: "ttft", label: t("stats.more.ttft"), value: formatDurationPrecise(detail.ttftMs / detail.ttftSteps), hint: t("stats.more.ttftHint") });
+      }
+      if (detail.decodeMs > 0 && detail.decodeTokens > 0) {
+        rows.push({
+          key: "speed",
+          label: t("stats.more.speed"),
+          value: t("stats.more.speedValue", { v: formatTokensPerSecond(detail.decodeTokens / (detail.decodeMs / 1000)) }),
+          hint: t("stats.more.speedHint"),
+        });
+      }
+      if (isRecord(detail.tokens)) {
+        const tokens = detail.tokens;
+        rows.push({ key: "tokensHead", section: true, label: t("stats.more.tokens"), hint: t("stats.more.tokensHint") });
+        rows.push({
+          key: "tokenTotal",
+          label: t("stats.more.tokenTotal"),
+          value: t("stats.more.tokenValue", { count: formatTokensCompact(tokens.total) }),
+          hint: t("stats.more.tokensHint"),
+        });
+        const cacheHit = cacheHitPercentOf(tokens);
+        if (cacheHit !== null) rows.push({ key: "cacheHit", label: t("stats.more.cacheHit"), value: `${cacheHit}%`, hint: t("stats.more.cacheHitHint") });
+        rows.push({ key: "input", label: t("stats.more.input"), value: t("stats.more.tokenValue", { count: formatTokenGroups(tokens.input) }), hint: t("stats.more.inputHint") });
+        if (tokens.cacheRead > 0) {
+          rows.push({ key: "cacheRead", label: t("stats.more.cacheRead"), value: t("stats.more.tokenValue", { count: formatTokenGroups(tokens.cacheRead) }), hint: t("stats.more.cacheReadHint") });
+        }
+        if (tokens.cacheWrite > 0) {
+          rows.push({ key: "cacheWrite", label: t("stats.more.cacheWrite"), value: t("stats.more.tokenValue", { count: formatTokenGroups(tokens.cacheWrite) }), hint: t("stats.more.cacheWriteHint") });
+        }
+        rows.push({ key: "output", label: t("stats.more.output"), value: t("stats.more.tokenValue", { count: formatTokenGroups(tokens.output) }), hint: t("stats.more.outputHint") });
+        if (tokens.reasoning > 0) {
+          rows.push({ key: "reasoning", label: t("stats.more.reasoning"), value: t("stats.more.tokenValue", { count: formatTokenGroups(tokens.reasoning) }), hint: t("stats.more.reasoningHint") });
+        }
+      }
+      return rows;
+    }
+
+    /** One fixed-position popover anchored under a pill. The toolbar wrappers clip
+        absolutely positioned children, so this anchors to the viewport, follows its
+        pill while the chat auto-scrolls, and closes on outside pointerdown/Escape. */
+    function useAnchoredPopover(heightGuess) {
+      const [open, setOpen] = React.useState(false);
+      const [pos, setPos] = React.useState(null);
+      const anchorRef = React.useRef(null);
+      const popRef = React.useRef(null);
+      const place = React.useCallback(() => {
+        const button = anchorRef.current;
         if (button === null || button.isConnected !== true) return false;
         const rect = button.getBoundingClientRect();
         if (rect.bottom < 0 || rect.top > window.innerHeight) return false;
-        setErrPop({
-          top: Math.min(rect.bottom + 5, Math.max(8, window.innerHeight - 292)),
+        /* After the first paint the mounted popover knows its own height, which is
+           what keeps a long list (every row of the 全部轮次 scope) inside the view. */
+        const height = popRef.current !== null && popRef.current.offsetHeight > 0 ? popRef.current.offsetHeight : heightGuess;
+        setPos({
+          top: Math.min(rect.bottom + 5, Math.max(8, window.innerHeight - height)),
           right: Math.max(8, window.innerWidth - rect.right),
         });
         return true;
+      }, [heightGuess]);
+      const close = React.useCallback(() => {
+        setOpen(false);
+        setPos(null);
       }, []);
       React.useEffect(() => {
-        if (!errOpen) return undefined;
-        const close = () => setErrPop(null);
+        if (!open) return undefined;
+        /* the popover is mounted by now: re-place with its measured height */
+        if (!place()) {
+          close();
+          return undefined;
+        }
         const onDown = (event) => {
-          if (errRef.current && !errRef.current.contains(event.target)) close();
+          if (popRef.current && !popRef.current.contains(event.target)) close();
         };
         const onKey = (event) => {
           if (event.key === "Escape") close();
@@ -6039,9 +6545,13 @@ function FileTypeIcon(props) {
         let frame = 0;
         const follow = () => {
           if (frame !== 0) return;
+          if (typeof requestAnimationFrame !== "function") {
+            if (!place()) close();
+            return;
+          }
           frame = requestAnimationFrame(() => {
             frame = 0;
-            if (!placePopover()) setErrPop(null);
+            if (!place()) close();
           });
         };
         document.addEventListener("mousedown", onDown);
@@ -6049,13 +6559,22 @@ function FileTypeIcon(props) {
         window.addEventListener("scroll", follow, true);
         window.addEventListener("resize", follow);
         return () => {
-          if (frame !== 0) cancelAnimationFrame(frame);
+          if (frame !== 0 && typeof cancelAnimationFrame === "function") cancelAnimationFrame(frame);
           document.removeEventListener("mousedown", onDown);
           document.removeEventListener("keydown", onKey);
           window.removeEventListener("scroll", follow, true);
           window.removeEventListener("resize", follow);
         };
-      }, [errOpen, placePopover]);
+      }, [open, place, close]);
+      return { open, setOpen, pos, anchorRef, popRef, place, close };
+    }
+
+    /** Left-hand stat pills on the scope row: duration, tool calls, commands, files, failures. */
+    function StatsBar({ stats, t, canTimeline, timelineOpen, scrubbing, onToggleTimeline, prevJump, onPrevTurn, failedSteps, detail }) {
+      /* both popovers keep their hooks above every early return */
+      const failed = Array.isArray(failedSteps) ? failedSteps.filter((step) => isRecord(step)) : [];
+      const err = useAnchoredPopover(292);
+      const more = useAnchoredPopover(360);
       if (!isRecord(stats)) return null;
       const duration = typeof stats.durationMs === "number" ? stats.durationMs : 0;
       const toolCalls = typeof stats.toolCalls === "number" ? stats.toolCalls : 0;
@@ -6075,6 +6594,8 @@ function FileTypeIcon(props) {
       if (duration === 0 && toolCalls === 0) return jumpBtn === null ? null : h("div", { className: "dsov-stats" }, jumpBtn);
       const pill = (key, text, title, tone) => h("span", { className: "dsov-stat", key, title, ...(tone === undefined ? {} : { "data-tone": tone }) }, text);
       const scrubable = canTimeline === true && typeof onToggleTimeline === "function";
+      /* the aggregate scope is a session reading, not a single turn's */
+      const moreHead = detail !== null && isRecord(detail) && detail.scope === "all" ? t("stats.more.headAll") : t("stats.more.head");
       return h(
         "div",
         { className: "dsov-stats" },
@@ -6102,39 +6623,40 @@ function FileTypeIcon(props) {
         errors > 0
           ? h(
               "span",
-              { className: "dsov-statWrap", key: "errors", ref: errRef },
+              { className: "dsov-statWrap", key: "errors", ref: err.popRef },
               h(
                 "button",
                 {
                   type: "button",
                   className: "dsov-stat dsov-statBtn",
                   "data-tone": "err",
-                  "data-active": errOpen ? "true" : undefined,
-                  ref: errBtnRef,
+                  "data-active": err.open ? "true" : undefined,
+                  ref: err.anchorRef,
                   disabled: failed.length === 0,
                   title: failed.length > 0 ? t("stats.errors.popTitle") : t("stats.errors.title"),
                   onClick:
                     failed.length > 0
                       ? () => {
-                          if (errOpen) {
-                            setErrPop(null);
+                          if (err.open) {
+                            err.close();
                             return;
                           }
-                          if (!placePopover()) setErrPop(null);
+                          err.setOpen(true);
+                          if (!err.place()) err.close();
                         }
                       : undefined,
                 },
                 t("stats.errors", { n: errors })
               ),
-              errOpen && failed.length > 0
+              err.open && err.pos !== null && failed.length > 0
                 ? h(
                     "div",
-                    { className: "dsov-errPop", style: { top: `${errPop.top}px`, right: `${errPop.right}px` } },
+                    { className: "dsov-errPop", style: { top: `${err.pos.top}px`, right: `${err.pos.right}px` } },
                     h(
                       "div",
                       { className: "dsov-errPopHead" },
                       h("span", null, t("stats.errors.list", { n: failed.length }), errors > failed.length ? h("span", { className: "dsov-errPopHint" }, t("stats.errors.truncated")) : null),
-                      h("button", { type: "button", className: "dsov-errPopClose", title: t("stats.errors.close"), onClick: () => setErrPop(null) }, "\u00d7")
+                      h("button", { type: "button", className: "dsov-errPopClose", title: t("stats.errors.close"), onClick: err.close }, "\u00d7")
                     ),
                     ...failed
                       .slice()
@@ -6157,6 +6679,58 @@ function FileTypeIcon(props) {
                           step.err ? h("div", { className: "dsov-errPopMsg" }, step.err) : null
                         )
                       )
+                  )
+                : null
+            )
+          : null,
+        detail !== null && isRecord(detail)
+          ? h(
+              "span",
+              { className: "dsov-statWrap", key: "more", ref: more.popRef },
+              h(
+                "button",
+                {
+                  type: "button",
+                  className: "dsov-stat dsov-statBtn dsov-moreBtn",
+                  "aria-haspopup": "dialog",
+                  "aria-expanded": more.open ? "true" : "false",
+                  "data-active": more.open ? "true" : undefined,
+                  ref: more.anchorRef,
+                  title: t("stats.more.title"),
+                  onClick: () => {
+                    if (more.open) {
+                      more.close();
+                      return;
+                    }
+                    more.setOpen(true);
+                    if (!more.place()) more.close();
+                  },
+                },
+                t("stats.more"),
+                h(IconChevron, { size: 10, className: "dsov-moreChevron" })
+              ),
+              more.open && more.pos !== null
+                ? h(
+                    "div",
+                    { className: "dsov-morePop", style: { top: `${more.pos.top}px`, right: `${more.pos.right}px` }, role: "dialog", "aria-label": moreHead },
+                    h(
+                      "div",
+                      { className: "dsov-moreHead" },
+                      h("span", { className: "dsov-moreTitle" }, moreHead),
+                      h("span", { className: "dsov-moreSub" }, detail.scope === "all" ? t("stats.more.allTurns") : t("stats.more.turn", { n: detail.turn })),
+                      h("button", { type: "button", className: "dsov-errPopClose", title: t("stats.more.close"), onClick: more.close }, "\u00d7")
+                    ),
+                    h("div", { className: "dsov-moreRule" }),
+                    ...turnDetailRows(detail, t).map((row) =>
+                      row.section === true
+                        ? h("div", { className: "dsov-moreSection", key: row.key, title: row.hint }, row.label)
+                        : h(
+                            "div",
+                            { className: "dsov-moreRow", key: row.key, title: row.hint },
+                            h("span", { className: "dsov-moreLabel" }, row.label),
+                            h("span", { className: "dsov-moreValue" }, row.value)
+                          )
+                    )
                   )
                 : null
             )
@@ -6582,6 +7156,8 @@ function FileTypeIcon(props) {
               timelineOpen,
               scrubbing: asOf !== null,
               failedSteps,
+              /* the 「更多」 panel: per-turn session statistics for this scope */
+              detail: summary.turnDetail,
               prevJump: asOf !== null && asOf <= summary.turnStart ? prevTurn : null,
               onPrevTurn: () => {
                 setSelection(`turn:${prevTurn}`);
@@ -7869,6 +8445,20 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 .dsov-errPopTime{color:var(--dsw-alias-label-tertiary);font-size:10px;white-space:nowrap}
 .dsov-errPopDetail{color:var(--dsw-alias-label-secondary);word-break:break-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .dsov-errPopMsg{margin-top:2px;color:var(--dsw-alias-state-error-primary,#ff453a);white-space:pre-wrap;word-break:break-all;font-size:10.5px;max-height:76px;overflow-y:auto}
+.dsov-moreBtn{display:inline-flex;align-items:center;gap:3px}
+.dsov-moreChevron{flex:none;opacity:.7;transition:transform .15s ease}
+.dsov-moreBtn[data-active=true] .dsov-moreChevron{transform:rotate(180deg)}
+.dsov-morePop{position:fixed;z-index:80;width:min(300px,82vw);max-height:min(72vh,430px);overflow-y:auto;padding:7px 9px 8px;border-radius:10px;background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l1);box-shadow:0 8px 22px rgba(0,0,0,.20);color:var(--dsw-alias-label-primary);font-size:11.5px;line-height:1.5}
+.dsov-moreHead{display:flex;align-items:center;gap:8px;padding:1px 1px 3px}
+.dsov-moreTitle{flex:none;font-weight:600;font-size:12px;color:var(--dsw-alias-label-primary)}
+.dsov-moreSub{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsov-moreRule{height:.5px;background:var(--dsw-alias-border-l1);margin:1px 0 5px}
+.dsov-moreSection{margin:7px 0 3px;font-size:10px;line-height:16px;letter-spacing:.04em;color:var(--dsw-alias-label-tertiary);font-weight:600}
+.dsov-moreSection:first-of-type{margin-top:2px}
+.dsov-moreRow{display:flex;align-items:baseline;gap:10px;padding:2px 2px;border-radius:5px}
+.dsov-moreRow:hover{background:var(--dsw-alias-bg-layer-3)}
+.dsov-moreLabel{flex:none;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.dsov-moreValue{flex:1 1 auto;min-width:0;text-align:right;color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;word-break:break-word}
 .dsov-role{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 2px;font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-secondary)}
 .dsov-roleBadge{flex:none;display:inline-flex;align-items:center;padding:1px 7px;border-radius:999px;font-weight:500;color:var(--dsw-alias-brand-primary,#247bbf);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 12%,transparent)}
 .dsov-role[data-kind=sub] .dsov-roleBadge{color:var(--dsw-alias-state-warn-primary,#ff9f0a);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff9f0a) 15%,transparent)}
@@ -8447,6 +9037,15 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
       stepFull,
       teamStepKey,
       formatDuration,
+      formatDurationPrecise,
+      formatTokensCompact,
+      formatTokenGroups,
+      formatTokensPerSecond,
+      cacheHitPercentOf,
+      turnDetailRows,
+      turnDetailFor,
+      turnDetailOf,
+      foldTurnMetrics,
       rerunPrompt,
       insertIntoComposer,
       requestNavScope,

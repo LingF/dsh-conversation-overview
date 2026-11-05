@@ -1,4 +1,4 @@
-/* Offline structural + fold test for dsh-conversation-overview.
+/* Offline structural + fold test for @local/dsh-conversation-overview.
  * Loads client.js with a stubbed module loader and React, then:
  *  1. checks zh/en dictionary key parity
  *  2. exercises apply() against a mock ctx and asserts registrations
@@ -14,6 +14,13 @@ import { createRequire } from "node:module";
 
 const require_ = createRequire(import.meta.url);
 const clientSource = readFileSync(new URL("../client.js", import.meta.url), "utf8");
+/* the dev bundle prefixes its plugin id with @local; the published bundle does not */
+const PLUGIN_ID = (/const TAB_ID = "([^"]+)"/.exec(clientSource) || [])[1]?.replace(/\/overview$/, "") ?? "dsh-conversation-overview";
+const bodyKey = (name) => `${PLUGIN_ID}/${name}`;
+/* the dev build defaults to the author's Viking account; the published one ships blank */
+const configSource = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+const VIKING_ACCOUNT_DEFAULT = (/vikingAccount: z\.string\(\)\.default\("([^"]*)"\)/.exec(configSource) || [])[1] ?? "";
+const VIKING_USER_DEFAULT = (/vikingUser: z\.string\(\)\.default\("([^"]*)"\)/.exec(configSource) || [])[1] ?? "";
 
 /* ---- stub environment -------------------------------------------------- */
 let captured = null;
@@ -188,8 +195,8 @@ assert.equal(vikingType.canOpen("dsh-resource://viking-memory/viking%3A%2F%2Fuse
 assert.equal(vikingType.canOpen("dsh-resource://file/x"), false);
 assert.equal(vikingType.title("dsh-resource://viking-memory/viking%3A%2F%2Fuser%2Fnotes%2Fx.md"), "x");
 const paneBodies = bodiesOf(both, "sidebar.right.pane.tab");
-assert.ok(paneBodies.some((b) => b.options.key === "dsh-conversation-overview/overview"), "overview body registered");
-const vikingBody = paneBodies.find((b) => b.options.key === "dsh-conversation-overview/viking");
+assert.ok(paneBodies.some((b) => b.options.key === bodyKey("overview")), "overview body registered");
+const vikingBody = paneBodies.find((b) => b.options.key === bodyKey("viking"));
 assert.ok(vikingBody, "viking body registered");
 assert.equal(typeof vikingBody.Component, "function");
 const rowConfig = findReg(both, "plugins.row.config");
@@ -213,15 +220,15 @@ const conv = materialize({ placement: "conversation" });
 assert.ok(findReg(conv, "conversation.view"), "view kept for conversation placement");
 assert.ok(!tabTypesOf(conv).some((d) => d.kind === "conversation-overview"), "overview sidebar tab type skipped");
 assert.ok(tabTypesOf(conv).some((d) => d.kind === "viking-memory"), "viking tab type kept");
-assert.ok(!bodiesOf(conv, "sidebar.right.pane.tab").some((b) => b.options.key === "dsh-conversation-overview/overview"), "overview body skipped");
-assert.ok(bodiesOf(conv, "sidebar.right.pane.tab").some((b) => b.options.key === "dsh-conversation-overview/viking"), "viking body kept");
+assert.ok(!bodiesOf(conv, "sidebar.right.pane.tab").some((b) => b.options.key === bodyKey("overview")), "overview body skipped");
+assert.ok(bodiesOf(conv, "sidebar.right.pane.tab").some((b) => b.options.key === bodyKey("viking")), "viking body kept");
 assert.ok(findReg(conv, "plugins.row.config"), "settings form kept");
 
 /* scenario C: placement=sidebar -> no conversation view */
 const side = materialize({ placement: "sidebar" });
 assert.ok(!findReg(side, "conversation.view"), "view skipped for sidebar placement");
 assert.ok(tabTypesOf(side).some((d) => d.kind === "conversation-overview"), "sidebar tab type kept");
-assert.ok(bodiesOf(side, "sidebar.right.pane.tab").some((b) => b.options.key === "dsh-conversation-overview/overview"), "sidebar body kept");
+assert.ok(bodiesOf(side, "sidebar.right.pane.tab").some((b) => b.options.key === bodyKey("overview")), "sidebar body kept");
 assert.ok(findReg(side, "plugins.row.config"), "settings form kept");
 
 /* scenario D: live config changes dispose and re-register surfaces */
@@ -258,8 +265,8 @@ assert.deepEqual(T.normalizeConfig(undefined), {
   vikingPreview: true,
   conclusionTab: true,
   vikingUrl: "http://127.0.0.1:1933",
-  vikingAccount: "",
-  vikingUser: "",
+  vikingAccount: VIKING_ACCOUNT_DEFAULT,
+  vikingUser: VIKING_USER_DEFAULT,
 });
 assert.equal(T.normalizeConfig({ showProgress: false, placement: "sidebar", quickNav: false }).quickNav, false);
 assert.equal(T.normalizeConfig({ vikingPreview: false }).vikingPreview, false);
@@ -332,7 +339,7 @@ assert.equal(T.normalizeConfig({}).stepAnchors, false, "stepAnchors defaults off
 assert.equal(T.normalizeConfig({ todoPromptTemplate: "重跑 {index}: {content}\n保留换行" }).todoPromptTemplate, "重跑 {index}: {content}\n保留换行");
 assert.equal(T.normalizeConfig({ todoPromptTemplate: 42 }).todoPromptTemplate, "");
 assert.equal(T.normalizeConfig({ vikingUrl: "http://x:1/" }).vikingUrl, "http://x:1");
-assert.equal(T.normalizeConfig({ vikingAccount: "  " }).vikingAccount, "");
+assert.equal(T.normalizeConfig({ vikingAccount: "  " }).vikingAccount, VIKING_ACCOUNT_DEFAULT);
 assert.deepEqual(T.normalizeConfig({ placement: "nope", showArtifacts: "x", showReferences: null }).placement, "both");
 
 /* tree helpers: expand component nodes and collect matches */
@@ -402,7 +409,7 @@ assert.equal(areas.length, 1, "prompt template textarea visible while todoPrompt
 assert.equal(areas[0].props.placeholder, "settings.todoPromptPlaceholder", "the old notes became the placeholder");
 const formInputs = textInputs(pageForm);
 assert.equal(formInputs.length, 3, "viking url/account/user inputs");
-assert.deepEqual(formInputs.map((i) => i.props.value), ["http://127.0.0.1:1933", "", ""]);
+assert.deepEqual(formInputs.map((i) => i.props.value), ["http://127.0.0.1:1933", VIKING_ACCOUNT_DEFAULT, VIKING_USER_DEFAULT]);
 /* open the placement menu and pick an option */
 selects[10].props.onClick();
 const opened = renderForm(formHost, formProps);
@@ -631,8 +638,8 @@ assert.deepEqual(detail, ["viking://user/a/b.md", "viking://user/c.md"]);
 const punctuated = T.contextDetail({ kind: "plugin:openviking-memory" }, [{ type: "text", text: "见 viking://user/c/plan.md。还有 viking://user/c/x.md," }]);
 assert.deepEqual(punctuated, ["viking://user/c/plan.md", "viking://user/c/x.md"], "trailing punctuation stripped from extracted uris");
 /* quoted extraction recovers URIs containing spaces; truncated bare prefixes are dropped */
-const spacedText = '<memory uri="viking://user/alice/memories/preferences/alice/大 json 前端渲染方案.md" type="preferences" score="0.83" />';
-assert.deepEqual(T.extractVikingUris(spacedText), ["viking://user/alice/memories/preferences/alice/大 json 前端渲染方案.md"], "quoted uri keeps inner spaces");
+const spacedText = '<memory uri="viking://user/zhangling/memories/preferences/zhangling/大 json 前端渲染方案.md" type="preferences" score="0.83" />';
+assert.deepEqual(T.extractVikingUris(spacedText), ["viking://user/zhangling/memories/preferences/zhangling/大 json 前端渲染方案.md"], "quoted uri keeps inner spaces");
 assert.equal(T.vikingName(T.extractVikingUris(spacedText)[0]), "大 json 前端渲染方案", "display name uses the full segment");
 assert.deepEqual(T.extractVikingUris('uri="viking://a/b c.md" 以及 viking://a/b'), ["viking://a/b c.md"], "space-truncated bare prefix dropped");
 assert.deepEqual(T.extractVikingUris("viking://a/dir viking://a/dir/sub.md"), ["viking://a/dir", "viking://a/dir/sub.md"], "slash-child uri is not a space prefix");
@@ -717,15 +724,15 @@ assert.ok(flat.includes("文件加密检测"), "keyword value rendered");
 assert.ok(!flat.includes('"title"'), "title consumed as heading, not a field row");
 
 /* breadcrumbs */
-const segs = T.vikingSegments("viking://user/alice/memories/x.md");
-assert.deepEqual(segs.map((s) => s.name), ["user", "alice", "memories", "x.md"]);
+const segs = T.vikingSegments("viking://user/zhangling/memories/x.md");
+assert.deepEqual(segs.map((s) => s.name), ["user", "zhangling", "memories", "x.md"]);
 assert.equal(segs[0].uri, "viking://user/");
-assert.equal(segs[2].uri, "viking://user/alice/memories/");
+assert.equal(segs[2].uri, "viking://user/zhangling/memories/");
 assert.equal(segs[3].leaf, true);
-assert.equal(segs[3].uri, "viking://user/alice/memories/x.md");
-const dirSegs = T.vikingSegments("viking://user/alice/skills/");
+assert.equal(segs[3].uri, "viking://user/zhangling/memories/x.md");
+const dirSegs = T.vikingSegments("viking://user/zhangling/skills/");
 assert.equal(dirSegs.at(-1).name, "skills");
-assert.equal(dirSegs.at(-1).uri, "viking://user/alice/skills");
+assert.equal(dirSegs.at(-1).uri, "viking://user/zhangling/skills");
 assert.equal(T.formatBytes(6067), "5.9 KB");
 assert.equal(T.formatBytes(512), "512 B");
 
@@ -929,6 +936,123 @@ assert.equal(T.getRefSort(), "time", "sort re-arms after clearing");
   assert.equal(l1.steps.length, 3, "turn 1 keeps its three steps");
   assert.equal(l1.steps.find((s) => s.name === "grep").done, true, "late result closes the running step in turn 1");
 
+  /* 「更多」 panel: per-turn session statistics folded from step/stream/tool events */
+  {
+    const tr = (key, params) => {
+      const template = T.zh[key] === undefined ? key : T.zh[key];
+      return params === undefined ? template : template.replace(/\{(\w+)\}/g, (match, name) => (name in params ? String(params[name]) : match));
+    };
+    const mf = T.createFolder();
+    mf.sessionId = "s-more";
+    const fold = (type, data, seq, time) => T.foldEvent(mf, ev(type, data, seq, time), W);
+    const messageEvent = (turn, step, time, provider, model, usage, tokenTime) => ({
+      turn,
+      step,
+      message: { source: { kind: "model", provider, model }, content: [{ type: "text", text: "ok" }] },
+      stream: [{ type: "chunk", time: tokenTime, chunk: { type: "text-delta", index: 0, text: "ok" } }],
+      usage,
+    });
+    fold("turn/start", { turn: 1 }, 1, 1000);
+    fold("step/start", { turn: 1, step: 1 }, 2, 1100);
+    /* a retried attempt carries billed usage but no visible token */
+    fold("assistant/attempt", { turn: 1, step: 1, stream: [{ type: "chunk", time: 1200, chunk: { type: "usage", usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 10 } } }] }, 3, 1250);
+    fold("tool/call", { turn: 1, step: 1, callId: "c1", name: "bash", arguments: "{}" }, 4, 1300);
+    fold("tool/result", { turn: 1, step: 1, message: { source: { callId: "c1" }, content: [{ type: "text", text: "ok" }] } }, 5, 1350);
+    fold("assistant/message", messageEvent(1, 1, 1500, "deepseek-official", "deepseek-flash", { inputTokens: 1000, outputTokens: 200, cacheReadTokens: 800, cacheWriteTokens: 0, totalTokens: 2000 }, 1200), 6, 1500);
+    fold("step/end", { turn: 1, step: 1 }, 7, 1550);
+    const mid = T.buildState(mf, { hasMore: false, entries: [] }, 0, "latest");
+    assert.equal(mid.turnDetail.steps, 1, "only closed steps count");
+    assert.equal(mid.turnDetail.toolMs, 50, "tool time pairs call and result");
+    fold("step/start", { turn: 1, step: 2 }, 8, 1600);
+    fold("assistant/message", messageEvent(1, 2, 1800, "bailian-tp", "qwen-max", { inputTokens: 500, outputTokens: 50, cacheReadTokens: 200 }, 1700), 9, 1800);
+    fold("step/end", { turn: 1, step: 2 }, 10, 1850);
+    fold("turn/end", { turn: 1 }, 11, 1900);
+    fold("turn/start", { turn: 2 }, 12, 2000);
+    fold("step/start", { turn: 2, step: 1 }, 13, 2100);
+    fold("assistant/message", messageEvent(2, 1, 2300, "deepseek-official", "deepseek-flash", { inputTokens: 50, outputTokens: 5 }, 2200), 14, 2300);
+    fold("step/end", { turn: 2, step: 1 }, 15, 2350);
+    fold("turn/end", { turn: 2 }, 16, 2400);
+
+    const latest = T.buildState(mf, { hasMore: false, entries: [] }, 0, "latest");
+    const first = T.buildState(mf, { hasMore: false, entries: [] }, 0, "turn:1");
+    const all = T.buildState(mf, { hasMore: false, entries: [] }, 0, "all");
+    assert.equal(latest.turnDetail.turn, 2, "latest scope shows the latest turn");
+    assert.equal(latest.turnDetail.steps, 1);
+    assert.equal(latest.turnDetail.llmMs, 200, "model time spans step/start to the assembled message");
+    assert.equal(latest.turnDetail.ttftMs, 100);
+    assert.equal(latest.turnDetail.decodeMs, 100);
+    assert.equal(latest.turnDetail.decodeTokens, 5);
+    assert.deepEqual(latest.turnDetail.models, ["deepseek-official/deepseek-flash"]);
+    assert.equal(latest.turnDetail.tokens.total, 55, "missing cache buckets count as zero");
+    assert.equal(latest.turnDetail.firstTokenMs, 100, "first token measured from the turn's first step/start");
+    assert.equal(first.turnDetail.turn, 1, "a pinned turn keeps its own figures");
+    assert.equal(first.turnDetail.steps, 2);
+    assert.equal(first.turnDetail.llmMs, 600, "both steps' model time");
+    assert.equal(first.turnDetail.toolMs, 50);
+    assert.equal(first.turnDetail.ttftMs, 200);
+    assert.equal(first.turnDetail.ttftSteps, 2);
+    assert.equal(first.turnDetail.decodeMs, 400);
+    assert.equal(first.turnDetail.decodeTokens, 250);
+    assert.deepEqual(first.turnDetail.models, ["deepseek-official/deepseek-flash", "bailian-tp/qwen-max"], "routes in first-seen order");
+    assert.deepEqual(first.turnDetail.tokens, { input: 1500, output: 250, cacheRead: 1000, cacheWrite: 0, reasoning: 0, total: 2750 }, "token buckets follow the assembled messages");
+    assert.equal(first.turnDetail.firstTokenMs, 100, "a later step's token never replaces the turn's first token");
+    assert.equal(all.turnDetail.scope, "all");
+    assert.equal(all.turnDetail.turns, 2, "turns with a closed step");
+    assert.equal(all.turnDetail.steps, 3, "steps sum across turns");
+    assert.equal(all.turnDetail.llmMs, 800);
+    assert.equal(all.turnDetail.toolMs, 50);
+    assert.equal(all.turnDetail.decodeTokens, 255);
+    assert.equal(all.turnDetail.tokens.total, 2805);
+    assert.equal(all.turnDetail.firstTokenMs, null, "aggregated scopes have no single turn start");
+
+    const rows = T.turnDetailRows(all.turnDetail, tr);
+    const valueOf = (key) => {
+      const row = rows.find((entry) => entry.key === key);
+      return row === undefined ? undefined : row.value;
+    };
+    assert.equal(valueOf("turns"), "2 轮");
+    assert.equal(valueOf("steps"), "3 步");
+    assert.equal(valueOf("model"), "deepseek-official/deepseek-flash, bailian-tp/qwen-max");
+    assert.equal(valueOf("tokenTotal"), "2.8K tok");
+    assert.equal(valueOf("cacheHit"), "39.2%");
+    assert.equal(valueOf("input"), "1,550 tok", "uncached input only");
+    assert.equal(valueOf("output"), "255 tok");
+    assert.equal(rows.find((entry) => entry.key === "tokensHead").section, true, "token usage is its own group");
+    assert.equal(valueOf("firstToken"), undefined, "the all scope has no first-token row");
+    assert.ok(
+      rows.filter((entry) => entry.section !== true).every((entry) => typeof entry.hint === "string" && entry.hint !== "" && entry.hint !== entry.label),
+      "every all-scope row explains its calculation on hover"
+    );
+    const turnRows = T.turnDetailRows(first.turnDetail, tr);
+    assert.equal(turnRows.find((entry) => entry.key === "turns"), undefined, "a single turn has no turn count row");
+    assert.equal(turnRows.find((entry) => entry.key === "steps").value, "2 步");
+    assert.equal(turnRows.find((entry) => entry.key === "llm").value, "0.6s");
+    assert.equal(turnRows.find((entry) => entry.key === "cacheHit").value, "40%");
+    assert.equal(turnRows.find((entry) => entry.key === "firstToken").value, "0.1s", "turn first token latency sits with the model rows");
+    assert.equal(turnRows.find((entry) => entry.key === "firstToken").hint, tr("stats.more.firstTokenHint"), "hover text comes from the locale dictionary");
+    assert.ok(
+      turnRows.filter((entry) => entry.section !== true).every((entry) => typeof entry.hint === "string" && entry.hint !== ""),
+      "every turn-scope row explains its calculation on hover"
+    );
+    const hinted = turnRows.filter((entry) => entry.section !== true && entry.key !== "tokenTotal").map((entry) => entry.hint);
+    assert.equal(new Set(hinted).size, hinted.length, "each row carries its own rule text");
+    assert.equal(T.turnDetailRows(null, tr).length, 0, "missing metrics yield no rows");
+    assert.equal(T.turnDetailFor(mf, "turn:9", 2), null, "an unknown turn has no detail");
+
+    /* formatting helpers shared with the host pills */
+    assert.equal(T.formatTokensCompact(517), "517");
+    assert.equal(T.formatTokensCompact(12200), "12.2K");
+    assert.equal(T.formatTokensCompact(1200000), "1.2M");
+    assert.equal(T.formatTokenGroups(1650), "1,650");
+    assert.equal(T.formatTokensPerSecond(9.54), "9.5");
+    assert.equal(T.formatTokensPerSecond(62.4), "62");
+    assert.equal(T.formatDurationPrecise(45200), "45.2s");
+    assert.equal(T.formatDurationPrecise(75000), "1m 15s");
+    assert.equal(T.cacheHitPercentOf({ input: 0, cacheRead: 0, cacheWrite: 0 }), null, "no prompt input means no cache reading");
+    assert.equal(T.cacheHitPercentOf({ input: 4, cacheRead: 9996, cacheWrite: 0 }), 99.9, "a partial hit never reads as 100%");
+    assert.equal(T.cacheHitPercentOf({ input: 0, cacheRead: 100, cacheWrite: 0 }), 100, "a full hit reads as 100%");
+  }
+
   /* nav-scope linkage store */
   const before = T.readNavScope();
   T.requestNavScope("turn:5");
@@ -979,19 +1103,19 @@ assert.equal(T.getRefSort(), "time", "sort re-arms after clearing");
   /* viking ref naming: skills by folder name, dirs vs files distinguished */
   assert.equal(T.vikingLabel("viking://agent/skills/xunshan-api-migration/SKILL.md"), "xunshan-api-migration", "SKILL.md reads as the skill name");
   /* labels are composed with the runtime locale prefix, so assert on the stable parts */
-assert.ok(T.vikingLabel("viking://user/alice/memories/entities/软件/会议助手.md").endsWith("会议助手"), "entity memory keeps its leaf name");
-assert.ok(T.vikingLabel("viking://user/alice/memories/entities/软件/会议助手.md").includes(" · "), "entity memory is prefixed by its tree");
-assert.ok(T.vikingLabel("viking://user/alice/peers/deepseek-workspace/memories/events/2026/10/29").endsWith("2026-10-29"), "a dated memory folder reads as its day, not its last segment");
-assert.ok(T.vikingLabel("viking://user/alice/peers/deepseek-workspace/memories/events/2026/10/29") !== "29", "the bare day number never becomes the label");
+assert.ok(T.vikingLabel("viking://user/zhangling/memories/entities/软件/会议助手.md").endsWith("会议助手"), "entity memory keeps its leaf name");
+assert.ok(T.vikingLabel("viking://user/zhangling/memories/entities/软件/会议助手.md").includes(" · "), "entity memory is prefixed by its tree");
+assert.ok(T.vikingLabel("viking://user/zhangling/peers/deepseek-workspace/memories/events/2026/10/29").endsWith("2026-10-29"), "a dated memory folder reads as its day, not its last segment");
+assert.ok(T.vikingLabel("viking://user/zhangling/peers/deepseek-workspace/memories/events/2026/10/29") !== "29", "the bare day number never becomes the label");
 assert.equal(
-  T.vikingLabel("viking://user/alice/memories/events/2026/10/29/四项前端优化回归验证通过.md"),
+  T.vikingLabel("viking://user/zhangling/memories/events/2026/10/29/四项前端优化回归验证通过.md"),
   `四项前端优化回归验证通过 · 2026-10-29`,
   "a dated memory file reads as its title plus the day"
 );
-assert.ok(T.vikingLabel("viking://user/alice/memories/preferences/pnpm脚本运行方式.md").endsWith("pnpm脚本运行方式"), "preferences keep their own name");
+assert.ok(T.vikingLabel("viking://user/zhangling/memories/preferences/pnpm脚本运行方式.md").endsWith("pnpm脚本运行方式"), "preferences keep their own name");
   assert.equal(T.vikingRefKind("viking://agent/skills/foo/SKILL.md"), "skill", "SKILL.md folds as a skill ref");
   assert.equal(T.vikingRefKind("viking://agent/skills/foo"), "skill", "skill folder folds as a skill ref");
-  assert.equal(T.vikingRefKind("viking://user/alice/memories/x.md"), "memory-file", "memory paths stay memory-file");
+  assert.equal(T.vikingRefKind("viking://user/zhangling/memories/x.md"), "memory-file", "memory paths stay memory-file");
   assert.equal(T.vikingIsDir("viking://resources/projects/demo/"), true, "trailing slash is a dir");
   assert.equal(T.vikingIsDir("viking://resources/projects/demo"), true, "extensionless leaf is a dir");
   assert.equal(T.vikingIsDir("viking://resources/projects/demo.md"), false, "dotted leaf is a file");
