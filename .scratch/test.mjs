@@ -75,6 +75,7 @@ eval(clientSource); // registers into globalThis.window.__ModuleLoader__
 const mod = captured.factory((specifier) => {
   if (specifier === "react") return ReactStub;
   if (specifier === "react/jsx-runtime") return jsxStub;
+  if (specifier === "react-dom") return ReactDomStub;
   throw new Error(`unexpected require: ${specifier}`);
 });
 
@@ -88,9 +89,11 @@ const enKeys = Object.keys(T.en).sort();
 assert.deepEqual(enKeys, zhKeys, "zh/en dictionaries must share the key set");
 
 /* ---- 2. apply() registrations + config gating --------------------------- */
+const ReactDomStub = { createPortal: (node) => node };
 const requireStub = (specifier) => {
   if (specifier === "react") return ReactStub;
   if (specifier === "react/jsx-runtime") return jsxStub;
+  if (specifier === "react-dom") return ReactDomStub;
   throw new Error(`unexpected require: ${specifier}`);
 };
 
@@ -199,6 +202,30 @@ assert.ok(paneBodies.some((b) => b.options.key === bodyKey("overview")), "overvi
 const vikingBody = paneBodies.find((b) => b.options.key === bodyKey("viking"));
 assert.ok(vikingBody, "viking body registered");
 assert.equal(typeof vikingBody.Component, "function");
+/* plan workbench: its own tab type/body/chip plus the plan-review card action */
+const planType = tabTypes.find((d) => d.kind === "overview-plan");
+assert.ok(planType, "plan workbench tab type registered");
+assert.equal(planType.id, bodyKey("plan"));
+assert.deepEqual(planType.patterns, ["dsh-resource://overview-plan/**"]);
+assert.equal(planType.priority, "builtin");
+assert.equal(planType.multiple, true);
+const planAddress = T.planWorkbenchAddress("s1|planwb|call:c1");
+assert.equal(planAddress, "dsh-resource://overview-plan/s1%7Cplanwb%7Ccall%3Ac1");
+assert.equal(planType.canOpen(planAddress), true);
+assert.equal(planType.canOpen("dsh-resource://overview-plan/"), false);
+assert.equal(planType.canOpen("dsh-resource://overview-context/x"), false);
+assert.equal(planType.title(planAddress), "planWorkbench.tabTitle", "untitled workbench reads the dictionary");
+const planBody = paneBodies.find((b) => b.options.key === bodyKey("plan"));
+assert.ok(planBody, "plan workbench body registered");
+assert.equal(typeof planBody.Component, "function");
+assert.ok(
+  bodiesOf(both, "sidebar.right.pane.tab.title").some((b) => b.options.key === bodyKey("plan")),
+  "plan workbench tab chip registered"
+);
+const reviewAction = bodiesOf(both, "conversation.plan-review.actions").find((b) => b.options && b.options.id === `${PLUGIN_ID}/plan-review`);
+assert.ok(reviewAction, "plan review annotation action registered");
+assert.equal(reviewAction.options.order, 10, "annotation pill sits after the shipped plan-review buttons");
+assert.equal(typeof reviewAction.Component, "function");
 const rowConfig = findReg(both, "plugins.row.config");
 assert.ok(rowConfig, "settings form registered");
 assert.equal(rowConfig.options.key, "dsh-conversation-overview#conversation-overview");
@@ -638,8 +665,8 @@ assert.deepEqual(detail, ["viking://user/a/b.md", "viking://user/c.md"]);
 const punctuated = T.contextDetail({ kind: "plugin:openviking-memory" }, [{ type: "text", text: "见 viking://user/c/plan.md。还有 viking://user/c/x.md," }]);
 assert.deepEqual(punctuated, ["viking://user/c/plan.md", "viking://user/c/x.md"], "trailing punctuation stripped from extracted uris");
 /* quoted extraction recovers URIs containing spaces; truncated bare prefixes are dropped */
-const spacedText = '<memory uri="viking://user/zhangling/memories/preferences/zhangling/大 json 前端渲染方案.md" type="preferences" score="0.83" />';
-assert.deepEqual(T.extractVikingUris(spacedText), ["viking://user/zhangling/memories/preferences/zhangling/大 json 前端渲染方案.md"], "quoted uri keeps inner spaces");
+const spacedText = '<memory uri="viking://user/demo/memories/preferences/demo/大 json 前端渲染方案.md" type="preferences" score="0.83" />';
+assert.deepEqual(T.extractVikingUris(spacedText), ["viking://user/demo/memories/preferences/demo/大 json 前端渲染方案.md"], "quoted uri keeps inner spaces");
 assert.equal(T.vikingName(T.extractVikingUris(spacedText)[0]), "大 json 前端渲染方案", "display name uses the full segment");
 assert.deepEqual(T.extractVikingUris('uri="viking://a/b c.md" 以及 viking://a/b'), ["viking://a/b c.md"], "space-truncated bare prefix dropped");
 assert.deepEqual(T.extractVikingUris("viking://a/dir viking://a/dir/sub.md"), ["viking://a/dir", "viking://a/dir/sub.md"], "slash-child uri is not a space prefix");
@@ -724,15 +751,15 @@ assert.ok(flat.includes("文件加密检测"), "keyword value rendered");
 assert.ok(!flat.includes('"title"'), "title consumed as heading, not a field row");
 
 /* breadcrumbs */
-const segs = T.vikingSegments("viking://user/zhangling/memories/x.md");
-assert.deepEqual(segs.map((s) => s.name), ["user", "zhangling", "memories", "x.md"]);
+const segs = T.vikingSegments("viking://user/demo/memories/x.md");
+assert.deepEqual(segs.map((s) => s.name), ["user", "demo", "memories", "x.md"]);
 assert.equal(segs[0].uri, "viking://user/");
-assert.equal(segs[2].uri, "viking://user/zhangling/memories/");
+assert.equal(segs[2].uri, "viking://user/demo/memories/");
 assert.equal(segs[3].leaf, true);
-assert.equal(segs[3].uri, "viking://user/zhangling/memories/x.md");
-const dirSegs = T.vikingSegments("viking://user/zhangling/skills/");
+assert.equal(segs[3].uri, "viking://user/demo/memories/x.md");
+const dirSegs = T.vikingSegments("viking://user/demo/skills/");
 assert.equal(dirSegs.at(-1).name, "skills");
-assert.equal(dirSegs.at(-1).uri, "viking://user/zhangling/skills");
+assert.equal(dirSegs.at(-1).uri, "viking://user/demo/skills");
 assert.equal(T.formatBytes(6067), "5.9 KB");
 assert.equal(T.formatBytes(512), "512 B");
 
@@ -1103,19 +1130,19 @@ assert.equal(T.getRefSort(), "time", "sort re-arms after clearing");
   /* viking ref naming: skills by folder name, dirs vs files distinguished */
   assert.equal(T.vikingLabel("viking://agent/skills/xunshan-api-migration/SKILL.md"), "xunshan-api-migration", "SKILL.md reads as the skill name");
   /* labels are composed with the runtime locale prefix, so assert on the stable parts */
-assert.ok(T.vikingLabel("viking://user/zhangling/memories/entities/软件/会议助手.md").endsWith("会议助手"), "entity memory keeps its leaf name");
-assert.ok(T.vikingLabel("viking://user/zhangling/memories/entities/软件/会议助手.md").includes(" · "), "entity memory is prefixed by its tree");
-assert.ok(T.vikingLabel("viking://user/zhangling/peers/deepseek-workspace/memories/events/2026/10/29").endsWith("2026-10-29"), "a dated memory folder reads as its day, not its last segment");
-assert.ok(T.vikingLabel("viking://user/zhangling/peers/deepseek-workspace/memories/events/2026/10/29") !== "29", "the bare day number never becomes the label");
+assert.ok(T.vikingLabel("viking://user/demo/memories/entities/软件/会议助手.md").endsWith("会议助手"), "entity memory keeps its leaf name");
+assert.ok(T.vikingLabel("viking://user/demo/memories/entities/软件/会议助手.md").includes(" · "), "entity memory is prefixed by its tree");
+assert.ok(T.vikingLabel("viking://user/demo/peers/deepseek-workspace/memories/events/2026/10/29").endsWith("2026-10-29"), "a dated memory folder reads as its day, not its last segment");
+assert.ok(T.vikingLabel("viking://user/demo/peers/deepseek-workspace/memories/events/2026/10/29") !== "29", "the bare day number never becomes the label");
 assert.equal(
-  T.vikingLabel("viking://user/zhangling/memories/events/2026/10/29/四项前端优化回归验证通过.md"),
+  T.vikingLabel("viking://user/demo/memories/events/2026/10/29/四项前端优化回归验证通过.md"),
   `四项前端优化回归验证通过 · 2026-10-29`,
   "a dated memory file reads as its title plus the day"
 );
-assert.ok(T.vikingLabel("viking://user/zhangling/memories/preferences/pnpm脚本运行方式.md").endsWith("pnpm脚本运行方式"), "preferences keep their own name");
+assert.ok(T.vikingLabel("viking://user/demo/memories/preferences/pnpm脚本运行方式.md").endsWith("pnpm脚本运行方式"), "preferences keep their own name");
   assert.equal(T.vikingRefKind("viking://agent/skills/foo/SKILL.md"), "skill", "SKILL.md folds as a skill ref");
   assert.equal(T.vikingRefKind("viking://agent/skills/foo"), "skill", "skill folder folds as a skill ref");
-  assert.equal(T.vikingRefKind("viking://user/zhangling/memories/x.md"), "memory-file", "memory paths stay memory-file");
+  assert.equal(T.vikingRefKind("viking://user/demo/memories/x.md"), "memory-file", "memory paths stay memory-file");
   assert.equal(T.vikingIsDir("viking://resources/projects/demo/"), true, "trailing slash is a dir");
   assert.equal(T.vikingIsDir("viking://resources/projects/demo"), true, "extensionless leaf is a dir");
   assert.equal(T.vikingIsDir("viking://resources/projects/demo.md"), false, "dotted leaf is a file");
@@ -1675,6 +1702,794 @@ for (const log of logs) console.log(`  ${log}`);
   assert.equal(T.hostSessionRemote(), null, "flat accessor guard is survived as well");
   assert.equal(T.desktopCanOpen() instanceof Promise, true, "capability probe stays async and safe");
   T.__setRuntime(null);
+}
+
+/* ---- 12. 计划工作台：章节、身份/地址、批注存储、反馈与投递 ---------------- */
+{
+  /* earlier sections removed the window storage stub; this section owns it again */
+  globalThis.window.localStorage = localStorageStub;
+  /* sectioning: headings split, hashes inside fences never do */
+  const planMarkdown = ["# 目标", "", "第一段说明。", "", "## 步骤", "```bash", "# 这行不是标题", "```", "先跑测试。", "", "### 细节", "细节文本。"].join("\n");
+  const sections = T.planSections(planMarkdown);
+  assert.deepEqual(sections.map((s) => s.heading), ["目标", "步骤", "细节"], "headings become sections");
+  assert.deepEqual(sections.map((s) => s.level), [1, 2, 3]);
+  assert.deepEqual(sections.map((s) => s.index), [0, 1, 2]);
+  assert.ok(sections[1].text.includes("# 这行不是标题"), "fenced hash stays inside its section");
+  assert.ok(!sections[1].text.includes("### 细节"), "the next heading starts the next section");
+  assert.deepEqual(T.planSections(""), [], "empty plan has no sections");
+  assert.deepEqual(T.planSections("只有正文").map((s) => s.heading), [""], "headingless text is one section");
+  assert.equal(T.planSectionQuote({ heading: "目标", text: "# 目标\n\n  要做的事  " }), "要做的事", "quote is the first body line");
+  assert.equal(T.planSectionQuote({ heading: "空节", text: "# 空节" }), "空节", "heading is the fallback quote");
+
+  /* identity + address round trip */
+  assert.equal(T.planWorkbenchIdentity("c1", undefined, undefined), "call:c1");
+  assert.equal(T.planWorkbenchIdentity(undefined, "req-1", undefined), "review:req-1");
+  assert.equal(T.planWorkbenchIdentity(undefined, undefined, "s|plan|1"), "artifact:s|plan|1");
+  assert.equal(T.planWorkbenchIdentity(undefined, undefined, undefined), undefined, "no identity -> not openable");
+  const workbenchKey = T.planWorkbenchKey("s1", "call:c1");
+  assert.equal(workbenchKey, "s1|planwb|call:c1");
+  assert.deepEqual(T.parsePlanWorkbenchKey(workbenchKey), { sessionId: "s1", kind: "call", id: "c1" });
+  assert.equal(T.parsePlanWorkbenchKey("s1|plan|1"), undefined, "unrelated key rejected");
+  assert.equal(T.parsePlanWorkbenchKey("s1|planwb|bogus:1"), undefined, "unknown identity kind rejected");
+  assert.equal(T.parsePlanWorkbenchKey("garbage"), undefined);
+  assert.equal(T.planWorkbenchAddress(workbenchKey), "dsh-resource://overview-plan/s1%7Cplanwb%7Ccall%3Ac1");
+  assert.equal(T.parsePlanWorkbenchAddress(T.planWorkbenchAddress(workbenchKey)), workbenchKey, "address roundtrip");
+  assert.equal(T.parsePlanWorkbenchAddress("dsh-resource://overview-plan/"), undefined, "empty address rejected");
+  assert.equal(T.parsePlanWorkbenchAddress("dsh-resource://overview-context/x"), undefined, "foreign address rejected");
+  assert.equal(T.parsePlanWorkbenchAddress("dsh-resource://overview-plan/%zz"), undefined, "bad encoding rejected");
+
+  /* plan resource addresses mirror the plan plugin: plain and subagent forms */
+  T.__setRuntime({ t: (key) => key, ctx: { sessions: { subagentAddress: () => undefined } } });
+  assert.equal(T.planResourceAddress("s1", "c1"), "dsh-resource://plan/s1/c1");
+  assert.equal(T.planResourceAddress("s1", ""), undefined, "no call id -> no address");
+  T.__setRuntime({ t: (key) => key, ctx: { sessions: { subagentAddress: () => ({ parentSessionId: "p1", childSessionId: "c1", mode: "fork" }) } } });
+  assert.equal(T.planResourceAddress("c1", "call1"), "dsh-resource://plan/subagent/p1/c1/fork/call1", "subagent plan address");
+  T.__setRuntime(null);
+
+  /* annotation storage: sanitizing, caps, corrupt payload */
+  T.writePlanBook("s1|planwb|call:c1", { annotations: [{ sectionIndex: 2, heading: "步骤", quote: "q", comment: "  改成两步  " }], edited: "" });
+  const planBook = T.readPlanBook("s1|planwb|call:c1");
+  assert.equal(planBook.annotations.length, 1);
+  assert.equal(planBook.annotations[0].comment, "改成两步", "comment trimmed");
+  assert.equal(planBook.annotations[0].sectionIndex, 2);
+  assert.equal(T.readPlanBook("missing|key").annotations.length, 0, "unknown plan reads empty");
+  const dirtyBook = T.sanitizePlanBook({ annotations: [{ comment: "   " }, { comment: "x".repeat(9000) }, "junk"], edited: 42 });
+  assert.equal(dirtyBook.annotations.length, 1, "blank comments dropped, junk entries ignored");
+  assert.equal(dirtyBook.annotations[0].comment.length, 4000, "comment capped");
+  assert.equal(dirtyBook.edited, "", "non-string rewrite dropped");
+  assert.equal(T.sanitizePlanBook({ annotations: Array.from({ length: 80 }, (_, i) => ({ comment: `c${i}` })) }).annotations.length, 50, "per-plan annotation cap");
+  localStorageStub.setItem("dsh.conversationOverview.planAnnotations.v1", "{not json");
+  assert.equal(T.readPlanBook("s1|planwb|call:c1").annotations.length, 0, "corrupt store reads empty");
+  localStorageStub.removeItem("dsh.conversationOverview.planAnnotations.v1");
+
+  /* feedback template: ordering, rewrite, emptiness */
+  const tk = (name, params) => (params ? `${name}(${Object.values(params).join("|")})` : name);
+  const feedback = T.buildPlanFeedback({ title: "计划甲", annotations: planBook.annotations, edited: "" }, tk);
+  assert.ok(feedback.startsWith("planWorkbench.feedbackIntro(计划甲)"), "intro names the plan");
+  assert.ok(feedback.includes("planWorkbench.feedbackComment(改成两步)"), "annotation text included");
+  assert.ok(feedback.endsWith("planWorkbench.feedbackOutro"), "outro closes the request");
+  assert.equal(T.buildPlanFeedback({ annotations: [], edited: "" }, tk), null, "nothing to send");
+  assert.equal(T.buildPlanFeedback({ annotations: [], edited: "   " }, tk), null, "blank rewrite alone sends nothing");
+  const ordered = T.buildPlanFeedback({ title: "P", annotations: [{ sectionIndex: 3, heading: "分节", comment: "分节意见" }, { sectionIndex: -1, heading: "", comment: "整体意见" }] }, tk);
+  assert.ok(ordered.indexOf("整体意见") < ordered.indexOf("分节意见"), "whole-plan opinion sorts first");
+  const withRewrite = T.buildPlanFeedback({ title: "P", annotations: [], edited: "  # 新计划  " });
+  assert.ok(withRewrite.includes("planWorkbench.feedbackEdit") && withRewrite.includes("# 新计划"), "rewrite is included verbatim");
+
+  /* live review matching + delivery choice */
+  const reviewQuestion = { id: "plan-review", detail: "# 计划正文", intent: { kind: "plan-review", callId: "c9" } };
+  const pendingReview = { kind: "plan-review", questions: [reviewQuestion], answer: () => {}, snapshot: () => ({ channel: "waterfall" }) };
+  assert.equal(T.findLivePlanReview(pendingReview, "s1|planwb|call:c9", "# 计划正文").reviewId, "plan-review");
+  assert.equal(T.findLivePlanReview(pendingReview, "s1|planwb|call:other", "# 计划正文"), null, "call id mismatch keeps the review for its own plan");
+  assert.equal(T.findLivePlanReview(pendingReview, "s1|planwb|artifact:x", "# 计划正文").reviewId, "plan-review", "snapshot identity matches by text");
+  assert.equal(T.findLivePlanReview(pendingReview, "s1|planwb|artifact:x", "别的计划"), null, "different plan text rejected");
+  assert.equal(T.findLivePlanReview({ ...pendingReview, snapshot: () => ({ channel: "none" }) }, "s1|planwb|call:c9", "# 计划正文"), null, "unanswerable review ignored");
+  assert.equal(T.findLivePlanReview({ ...pendingReview, kind: "approval" }, "s1|planwb|call:c9", "# 计划正文"), null, "other interactions ignored");
+  assert.equal(T.findLivePlanReview({ ...pendingReview, answer: undefined }, "s1|planwb|call:c9", "# 计划正文"), null, "no answer capability");
+  assert.equal(T.planDelivery({ live: { reviewId: "r" }, hasInputActions: true }), "review");
+  assert.equal(T.planDelivery({ live: null, hasInputActions: true }), "draft");
+  assert.equal(T.planDelivery({ live: null, hasInputActions: false }), "copy");
+
+  /* opening: needs a session, an identity and a sidebar */
+  const opened = [];
+  T.__setRuntime({ t: (key) => key, ctx: { sidebarRight: { openResource: (address) => opened.push(address) } } });
+  assert.equal(T.openPlanWorkbench({ sessionId: "", callId: "c1" }), false, "session required");
+  assert.equal(T.openPlanWorkbench({ sessionId: "s1" }), false, "identity required");
+  assert.equal(T.openPlanWorkbench({ sessionId: "s1", callId: "c1", markdown: "# 计划一" }), true);
+  assert.equal(T.parsePlanWorkbenchAddress(opened[0]), "s1|planwb|call:c1", "workbench address carries the identity");
+  assert.equal(T.readContextPreview(T.parsePlanWorkbenchAddress(opened[0])).text, "# 计划一", "snapshot captured for the tab");
+  T.__setRuntime({ t: (key) => key, ctx: { sidebarRight: {} } });
+  assert.equal(T.openPlanWorkbench({ sessionId: "s1", requestKey: "req-2", markdown: "# 计划二" }), false, "no openResource -> not opened");
+  T.__setRuntime(null);
+}
+
+/* ---- 13. 计划工作台组件：审阅中/已结束/不可用三种状态都能渲染并投递 -------- */
+{
+  /* A second module instance with hook-capable React: every element function runs
+     once per render, so the body's render paths are exercised without a browser. */
+  const hookSlots = [];
+  let hookCursor = 0;
+  const renderReact = {
+    createElement: (type, props, ...children) => ({ type, props: props === undefined || props === null ? {} : props, children }),
+    Component: class {},
+    useMemo: (factory) => factory(),
+    useEffect: () => {},
+    useLayoutEffect: () => {},
+    useState: (init) => {
+      const i = hookCursor++;
+      if (!(i in hookSlots)) hookSlots[i] = typeof init === "function" ? init() : init;
+      return [hookSlots[i], (value) => { hookSlots[i] = typeof value === "function" ? value(hookSlots[i]) : value; }];
+    },
+    useRef: (init) => ({ current: init === undefined ? null : init }),
+    useCallback: (fn) => fn,
+    useId: () => "stub-id",
+    useSyncExternalStore: (subscribe, read) => read(),
+  };
+  const renderInstance = captured.factory((specifier) => {
+    if (specifier === "react") return renderReact;
+    if (specifier === "react/jsx-runtime") return jsxStub;
+    if (specifier === "react-dom") return ReactDomStub;
+    throw new Error(`unexpected require: ${specifier}`);
+  });
+  const R = renderInstance._test;
+  globalThis.window.localStorage = localStorageStub;
+  /* dictionary lookup with placeholder substitution: a missing key leaks as "planWorkbench.*" */
+  const rt = (key, params) => {
+    const template = typeof R.zh[key] === "string" ? R.zh[key] : key;
+    if (!params) return template;
+    return template.replace(/\{(\w+)\}/g, (match, name) => (name in params ? String(params[name]) : match));
+  };
+  /* invoke function components and collect element nodes + text */
+  const nodes = [];
+  const visit = (node) => {
+    if (node === null || node === undefined || node === false || node === true) return "";
+    if (typeof node === "string" || typeof node === "number") return String(node);
+    if (Array.isArray(node)) return node.map((child) => visit(child)).join("");
+    if (typeof node !== "object") return "";
+    if (typeof node.type === "function") {
+      hookCursor = 0;
+      const props = { ...node.props };
+      if (node.children.length === 1) props.children = node.children[0];
+      else if (node.children.length > 1) props.children = node.children;
+      return visit(node.type(props));
+    }
+    nodes.push(node);
+    return node.children.map((child) => visit(child)).join("");
+  };
+  const labelOf = (node) => node.children.map((child) => (typeof child === "string" || typeof child === "number" ? String(child) : "")).join("");
+  const buttonLabelled = (label) => nodes.filter((node) => node.type === "button" && labelOf(node) === label).pop();
+
+  const planText = ["# 计划甲", "", "## 步骤", "先跑测试。", "", "## 收尾", "更新文档。"].join("\n");
+  const address = R.planWorkbenchAddress(R.planWorkbenchKey("s1", "call:c1"));
+  const key = R.parsePlanWorkbenchAddress(address);
+  R.rememberContextPreview("s1", "planwb|call:c1", "计划甲", planText, "plan");
+  R.writePlanBook(key, { annotations: [{ sectionIndex: 1, heading: "步骤", quote: "先跑测试。", comment: "把步骤改成两步" }], edited: "" });
+
+  const reviewInteraction = {
+    kind: "plan-review",
+    questions: [{ id: "plan-review", detail: planText, intent: { kind: "plan-review", callId: "c1" } }],
+    answer: (payload) => {
+      answered = payload;
+      return Promise.resolve();
+    },
+    snapshot: () => ({ channel: "waterfall" }),
+  };
+  let answered = null;
+  let drafted = null;
+  const runtimeFor = (pendingInteraction) => ({
+    t: rt,
+    ctx: {
+      uiSession: { sessionStatus: { subscribe: () => () => {}, getSnapshot: () => ({ get: () => ({ pendingInteraction }) }) } },
+      sidebarRight: { openResource: () => {} },
+    },
+  });
+  const propsFor = (status) => ({
+    t: rt,
+    sessionId: "s1",
+    useTabInfo: () => ({ tab: { contentId: address } }),
+    useResource: () => (status === "live" ? { status: "live", value: { markdown: planText, title: "计划甲", callId: "c1" } } : { status: status }),
+    inputActions: { setDraft: (value) => { drafted = value; }, persistDraft: () => {} },
+  });
+
+  /* pending review: badge, pre-seeded annotation, submit through PendingQuestion.answer */
+  const renderBody = (props) => {
+    hookSlots.length = 0;
+    hookCursor = 0;
+    nodes.length = 0;
+    return visit({ type: R.PlanWorkbenchBody, props, children: [] });
+  };
+
+  R.__setRuntime(runtimeFor(reviewInteraction));
+  const liveText = renderBody(propsFor("live"));
+  assert.ok(liveText.includes("待审阅"), "live review state is shown");
+  assert.ok(liveText.includes("把步骤改成两步"), "stored annotation is rendered");
+  assert.ok(liveText.includes("1 条批注"), "annotation count");
+  assert.ok(!liveText.includes("planWorkbench."), `no missing dictionary keys: ${liveText}`);
+  const submitLive = buttonLabelled("提交批注并请求修订");
+  assert.ok(submitLive, "live review offers the revision submit");
+  submitLive.props.onClick();
+  assert.ok(answered !== null, "submit answers the pending question");
+  assert.equal(answered.answers[0].id, "plan-review");
+  assert.deepEqual(answered.answers[0].selected, []);
+  assert.ok(answered.answers[0].custom.includes("把步骤改成两步"), "feedback carries the annotation");
+  assert.ok(!answered.answers[0].custom.includes("planWorkbench."), "feedback uses dictionary text");
+
+  /* closed review: the composer draft is the delivery channel */
+  R.__setRuntime(runtimeFor(undefined));
+  const closedText = renderBody(propsFor("live"));
+  assert.ok(closedText.includes("审阅已结束"), "closed review state is shown");
+  const submitClosed = buttonLabelled("带入输入框");
+  assert.ok(submitClosed, "closed review offers the composer draft");
+  submitClosed.props.onClick();
+  assert.ok(drafted !== null && drafted.includes("把步骤改成两步"), "feedback goes to the composer draft");
+
+  /* edit mode: the 「改写」 control swaps the body for the rewrite textarea; state
+     survives because only this component stores hook slots (children are stateless) */
+  R.__setRuntime(runtimeFor(reviewInteraction));
+  hookSlots.length = 0;
+  renderBody(propsFor("live"));
+  const editTab = buttonLabelled("改写");
+  assert.ok(editTab, "edit mode control present");
+  editTab.props.onClick();
+  nodes.length = 0;
+  const editText = visit({ type: R.PlanWorkbenchBody, props: propsFor("live"), children: [] });
+  assert.ok(editText.includes("保存草稿"), "edit mode footer");
+  const editArea = nodes.find((node) => node.type === "textarea" && node.props["aria-label"] === "编辑计划全文");
+  assert.ok(editArea, "edit mode textarea");
+  assert.ok(String(editArea.props.value).includes("先跑测试。"), "textarea starts from the plan text");
+
+  /* unavailable: the plan resource and the snapshot are both gone */
+  R.__setRuntime(runtimeFor(undefined));
+  const missingText = renderBody({ ...propsFor("none"), useTabInfo: () => ({ tab: { contentId: R.planWorkbenchAddress(R.planWorkbenchKey("s9", "call:none")) } }) });
+  assert.ok(missingText.includes("计划内容不可用"), "missing plan shows the unavailable state");
+
+  /* the review-card pill renders without a plan-review slot */
+  hookSlots.length = 0;
+  nodes.length = 0;
+  const pillText = visit({ type: R.PlanReviewAnnotateAction, props: { t: rt, review: { plan: planText, callId: "c1" }, requestKey: "req-1", sessionId: "s1" }, children: [] });
+  assert.ok(pillText.includes("批注并修改"), "review pill is labelled");
+  assert.ok(pillText.includes("批注并修改") && nodes.some((node) => node.props && node.props.title === R.zh["planWorkbench.actionHint"]), "review pill keeps the workbench hint");
+  /* footer locator: prefers the semantic class suffixes, falls back to the row with two buttons */
+  const actionsNode = { querySelectorAll: () => ({ length: 2 }) };
+  const fakeCard = {
+    querySelector: () => actionsNode,
+    querySelectorAll: () => [actionsNode],
+  };
+  assert.equal(R.planReviewFooterActions(fakeCard), actionsNode, "footer actions found through the footer selector");
+  const looseCard = {
+    querySelector: () => null,
+    querySelectorAll: () => [{ querySelectorAll: () => ({ length: 1 }) }, actionsNode],
+  };
+  assert.equal(R.planReviewFooterActions(looseCard), actionsNode, "footer actions fall back to the button row");
+  assert.equal(R.planReviewFooterActions(null), null, "missing card means no footer target");
+  R.__setRuntime(null);
+}
+
+/* ---- 14. summary store: snapshot change/revision contract --------------- */
+{
+  /* The feed publishes {entries, hasMore, revision, change}; `change` is a delta
+     against the snapshot the store last consumed. Mounting mid-turn (the latest
+     publish is a transient append) must not leave the store blank, and a skipped
+     revision must rebuild from `entries` instead of appending out of order. */
+  const durable = (type, data, seq, time) => ({ type: "durable", event: { type, seq, time, data } });
+  const live = (seq, time) => ({ type: "transient", event: { type: "assistant/live-chunk", seq, time, data: { text: "…" } } });
+  const turnStart = durable("turn/start", { turn: 1 }, 1, 100);
+  const call1 = durable("tool/call", { callId: "c1", name: "bash", arguments: JSON.stringify({ command: "npm test" }) }, 2, 200);
+  const result1 = durable("tool/result", { message: { source: { callId: "c1" }, content: [{ type: "text", text: "ok" }] } }, 3, 300);
+  const chunk = live(4, 400);
+  const call2 = durable("tool/call", { callId: "c2", name: "read", arguments: JSON.stringify({ file_path: "a.md" }) }, 5, 500);
+  const chunk2 = live(6, 600);
+  const call3 = durable("tool/call", { callId: "c3", name: "grep", arguments: JSON.stringify({ pattern: "x" }) }, 7, 700);
+  const call4 = durable("tool/call", { callId: "c4", name: "glob", arguments: JSON.stringify({ pattern: "*.md" }) }, 8, 800);
+  const snapshot = (entries, revision, change, hasMore = false) => ({ entries, hasMore, revision, change });
+
+  const makeFeed = (initial) => {
+    const listeners = new Set();
+    const feed = { snapshot: initial };
+    const source = {
+      getSnapshot: () => feed.snapshot,
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+    const store = T.createSummaryStore({ eventSource: source, sessionId: "s-store" });
+    let notifies = 0;
+    store.subscribe(() => {
+      notifies += 1;
+    });
+    feed.publish = (next) => {
+      feed.snapshot = next;
+      for (const listener of [...listeners]) listener();
+    };
+    feed.store = store;
+    feed.notifies = () => notifies;
+    feed.reset = () => {
+      notifies = 0;
+    };
+    return feed;
+  };
+
+  /* mounted mid-turn: full history already in entries, latest delta is transient */
+  const feed = makeFeed(snapshot([turnStart, call1, result1, chunk], 4, { kind: "append", entries: [chunk] }));
+  const mounted = feed.store.getView("all");
+  assert.equal(mounted.stepsAll.length, 1, "mounting mid-turn shows the durable step, not an empty overview");
+  assert.equal(mounted.turns.length, 1, "mounting mid-turn keeps the turn");
+
+  /* a durable append after mount folds just that entry */
+  feed.reset();
+  feed.publish(snapshot([turnStart, call1, result1, chunk, call2], 5, { kind: "append", entries: [call2] }));
+  assert.equal(feed.notifies(), 1, "durable append notifies once");
+  assert.equal(feed.store.getView("all").stepsAll.length, 2, "durable append adds its step");
+
+  /* transient-only append advances the window without a rebuild or a render */
+  feed.reset();
+  feed.publish(snapshot([turnStart, call1, result1, chunk, call2, chunk2], 6, { kind: "append", entries: [chunk2] }));
+  assert.equal(feed.notifies(), 0, "transient-only append stays silent");
+  assert.equal(feed.store.getView("all").stepsAll.length, 2, "transient-only append does not disturb the view");
+
+  /* revision gap: two durable entries were published but only the last delta arrived */
+  feed.reset();
+  feed.publish(snapshot([turnStart, call1, result1, chunk, call2, chunk2, call3, call4], 8, { kind: "append", entries: [call4] }));
+  assert.equal(feed.notifies(), 1, "revision gap rebuild notifies");
+  const afterGap = feed.store.getView("all");
+  assert.equal(afterGap.stepsAll.length, 4, "revision gap rebuild folds every entry, including the skipped one");
+
+  /* settle-assistant always rebuilds (it may rewrite the last assistant row) */
+  feed.reset();
+  feed.publish(snapshot([turnStart, call1, result1, chunk, call2, chunk2, call3, call4], 9, { kind: "settle-assistant", entries: [] }));
+  assert.equal(feed.notifies(), 1, "settle-assistant rebuilds");
+
+  /* replace and prepend rebuild from entries */
+  feed.reset();
+  feed.publish(snapshot([turnStart, call1, result1, chunk], 10, { kind: "replace" }));
+  assert.equal(feed.store.getView("all").stepsAll.length, 1, "replace rebuild drops the later steps");
+  feed.publish(snapshot([turnStart, call1, result1, chunk, call2, call3], 11, { kind: "prepend", entries: [call2] }));
+  assert.equal(feed.store.getView("all").stepsAll.length, 3, "prepend rebuild keeps every entry");
+
+  /* dispose unsubscribes from the feed */
+  let unsubscribed = false;
+  const listeners = new Set();
+  const disposable = T.createSummaryStore({
+    eventSource: {
+      getSnapshot: () => snapshot([], 0, null),
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => {
+          unsubscribed = true;
+          listeners.delete(listener);
+        };
+      },
+    },
+    sessionId: "s-store",
+  });
+  disposable.dispose();
+  assert.equal(unsubscribed, true, "dispose unsubscribes from the event feed");
+}
+
+/* ---- 15. 计划工作台布局：正文单独滚动、提交栏常规流贴底 ---------------- */
+{
+  /* The tab body is a 100% flex column; the plan body must be the only scrollport
+     and the submit bar must sit in normal flow at the bottom instead of a negative
+     sticky offset (which used to clip it and cover the last lines of the plan). */
+  const rule = (selector) => {
+    const match = new RegExp(`\\${selector}\\{([^{}]*)\\}`).exec(clientSource.replace(/\n/g, ""));
+    return match === null ? "" : match[1];
+  };
+  assert.ok(/\.dsov-planWb\{[^}]*overflow:hidden/.test(clientSource.replace(/\n/g, "")), "workbench root is a fixed-height flex shell");
+  assert.ok(/\.dsov-planWb\{[^}]*height:100%/.test(clientSource.replace(/\n/g, "")), "workbench shell fills the tab");
+  assert.ok(/\.dsov-planWbBody\{[^}]*overflow-y:auto/.test(clientSource.replace(/\n/g, "")), "plan body scrolls on its own");
+  assert.ok(/\.dsov-planWbBody\{[^}]*min-height:0/.test(clientSource.replace(/\n/g, "")), "plan body may shrink inside the column");
+  const foot = rule(".dsov-planWbFoot");
+  assert.ok(foot.length > 0 && !foot.includes("position:sticky"), "submit bar is not a sticky overlay");
+  assert.ok(foot.includes("flex:none"), "submit bar keeps its own row");
+  assert.ok(/\.dsov-planWbHead\{[^}]*flex:none/.test(clientSource.replace(/\n/g, "")), "workbench head stays outside the scrollport");
+  assert.ok(!/\.dsov-planWbFoot\{[^}]*bottom:-24px/.test(clientSource.replace(/\n/g, "")), "no negative sticky offset on the submit bar");
+
+  /* the stats popovers leave the transform-pinned sticky toolbar through a portal */
+  assert.ok(clientSource.includes('require("react-dom")'), "react-dom is borrowed for portals");
+  assert.ok(clientSource.includes("createPortal(node, host)"), "renderOverlay portals to the body host");
+  assert.equal((clientSource.match(/\? renderOverlay\(/g) || []).length, 2, "errors and more popovers both use the overlay portal");
+  assert.ok(clientSource.includes("data-dsov-overlay"), "overlay host is marked for debugging");
+}
+
+/* ---- 16. 计划待审卡片动作：页脚插槽与宿主按钮 -------------------------- */
+{
+  const flat = clientSource.replace(/\n/g, "");
+  assert.ok(flat.includes(".dsov-planActionHost{"), "footer action host style exists");
+  assert.ok(flat.includes(".dsov-overlayHost{position:fixed"), "body overlay host is viewport-anchored");
+  assert.ok(flat.includes('document.querySelectorAll("[data-plan-review-key]")'), "review card is located by its data key");
+  assert.ok(flat.includes("createPortal(wrap, mount)"), "review pill is portalled into the card footer");
+  assert.ok(flat.includes("primitives.Button"), "host button styling is borrowed when available");
+  assert.ok(clientSource.includes('"planWorkbench.action": "批注并修改"'), "review action label is the parallel action text");
+  assert.ok(clientSource.includes('"planWorkbench.action": "Annotate & revise"'), "English review action label");
+}
+
+/* ---- 17. 进展实时状态带与步骤动效 -------------------------------------- */
+{
+  /* pure helpers first: window delta, completion hits, live step/scope */
+  const mkStep = (id, over) => ({ callId: id, name: "bash", seq: Number(id.slice(1)), detail: id, time: 1, done: true, ...over });
+  const s1 = mkStep("s1");
+  const s2 = mkStep("s2");
+  const s3 = mkStep("s3");
+  const s4 = mkStep("s4");
+  const s5 = mkStep("s5");
+  const s6 = mkStep("s6");
+  const s7 = mkStep("s7");
+  const slide = T.stepWindowDelta([s1, s2, s3, s4, s5, s6], [s2, s3, s4, s5, s6, s7]);
+  assert.deepEqual(slide.added.map((step) => step.callId), ["s7"], "window delta reports the arriving step");
+  assert.deepEqual(slide.dropped.map((step) => step.callId), ["s1"], "window delta reports the evicted step");
+  assert.deepEqual(T.stepWindowDelta([], [s1]).added.map((step) => step.callId), ["s1"], "first window fill is all added");
+  assert.equal(T.stepIdentityOf({ name: "compact-checkpoint", seq: 9 }), "compact-checkpoint|9", "callless step identity falls back to name|seq");
+
+  const stepByKey = new Map([
+    ["k1", { done: true }],
+    ["k2", { done: true, error: true }],
+    ["k3", { done: false }],
+  ]);
+  assert.deepEqual(T.completedStepKeys(["k1", "k2", "k3"], ["k3"], stepByKey), ["k1"], "only successful completions earn a hit");
+  assert.deepEqual(T.completedStepKeys(["k3"], ["k3"], stepByKey), [], "still-running key is not a hit");
+  assert.deepEqual(T.completedStepKeys(["gone"], [], new Map()), [], "vanished keys without a step are ignored");
+
+  assert.equal(T.liveStepOf([{ callId: "a", done: true }, { callId: "b", done: false }]).callId, "b", "live step is the last unfinished one");
+  assert.equal(T.liveStepOf([{ callId: "a", done: true, error: true }]), null, "failed steps are not live work");
+  assert.equal(T.liveStepOf([{ name: "approval", done: false }]), null, "approval children are not promoted");
+
+  assert.equal(T.liveScopeMatches("latest", 3), true, "latest scope is live");
+  assert.equal(T.liveScopeMatches("all", 3), true, "all scope is live");
+  assert.equal(T.liveScopeMatches("turn:3", 3), true, "current turn is live");
+  assert.equal(T.liveScopeMatches("turn:2", 3), false, "older turn is not live");
+  assert.equal(T.liveScopeMatches("nonsense", 3), false, "unknown scope is not live");
+
+  /* render ProgressSection through a hook harness that keys slots by component
+     type, so Section and ProgressSection never share hook state */
+  const slotsByType = new Map();
+  const cursors = new Map();
+  let currentType = null;
+  const renderReact = {
+    createElement: (type, props, ...children) => ({ type, props: props === undefined || props === null ? {} : props, children }),
+    Component: class {},
+    useMemo: (factory) => factory(),
+    useEffect: () => {},
+    useLayoutEffect: () => {},
+    useState: (init) => {
+      const type = currentType;
+      if (!slotsByType.has(type)) slotsByType.set(type, []);
+      const slots = slotsByType.get(type);
+      const index = cursors.get(type) ?? 0;
+      cursors.set(type, index + 1);
+      if (!(index in slots)) slots[index] = typeof init === "function" ? init() : init;
+      return [slots[index], (value) => {
+        slots[index] = typeof value === "function" ? value(slots[index]) : value;
+      }];
+    },
+    useRef: (init) => ({ current: init === undefined ? null : init }),
+    useCallback: (fn) => fn,
+    useId: () => "stub-id",
+    useSyncExternalStore: (subscribe, read) => read(),
+  };
+  const instance = captured.factory((specifier) => {
+    if (specifier === "react") return renderReact;
+    if (specifier === "react/jsx-runtime") return jsxStub;
+    if (specifier === "react-dom") return ReactDomStub;
+    throw new Error(`unexpected require: ${specifier}`);
+  });
+  const P = instance._test;
+  globalThis.window.localStorage = localStorageStub;
+  const pt = (key, params) => {
+    const template = typeof P.zh[key] === "string" ? P.zh[key] : key;
+    if (!params) return template;
+    return template.replace(/\{(\w+)\}/g, (match, name) => (name in params ? String(params[name]) : match));
+  };
+  const nodes = [];
+  const visit = (node) => {
+    if (node === null || node === undefined || node === false || node === true) return "";
+    if (typeof node === "string" || typeof node === "number") return String(node);
+    if (Array.isArray(node)) return node.map((child) => visit(child)).join("");
+    if (typeof node !== "object") return "";
+    if (typeof node.type === "function") {
+      currentType = node.type;
+      cursors.set(node.type, 0);
+      const props = { ...node.props };
+      if (node.children.length === 1) props.children = node.children[0];
+      else if (node.children.length > 1) props.children = node.children;
+      return visit(node.type(props));
+    }
+    nodes.push(node);
+    return node.children.map((child) => visit(child)).join("");
+  };
+  const rawText = (node) => {
+    if (typeof node === "string" || typeof node === "number") return String(node);
+    if (Array.isArray(node)) return node.map(rawText).join("");
+    if (node && typeof node === "object") return rawText(node.children);
+    return "";
+  };
+  const ofClass = (name) => nodes.filter((node) => node.props && node.props.className === name);
+  const now = Date.now();
+  const runningStep = { callId: "c1", name: "bash", seq: 1, detail: "npm test", full: "npm test -- --run", time: now - 4000, endTime: 0, done: false, error: false };
+  const doneStep = { callId: "c0", name: "read", seq: 0, detail: "a.md", full: "a.md", time: now - 9000, endTime: now - 8000, done: true, error: false };
+  const summaryOf = (over) => ({
+    todos: null,
+    todosTime: 0,
+    goal: null,
+    artifacts: [],
+    references: [],
+    steps: [doneStep, runningStep],
+    stepsAll: [doneStep, runningStep],
+    team: { members: [], tasks: [], subagents: [] },
+    stats: { durationMs: 9000, toolCalls: 1, commands: 1, errors: 0, files: 0 },
+    turnStart: now - 5000,
+    turnEnd: now,
+    milestones: [],
+    todoHistory: [],
+    changeTurns: [],
+    hasMore: false,
+    localeRev: 0,
+    turns: [1],
+    latestTurn: 1,
+    scope: "latest",
+    scopeTurns: 1,
+    turnDetail: null,
+    conclusion: null,
+    ...over,
+  });
+  const renderProgress = (over) => {
+    for (const slots of slotsByType.values()) slots.length = 0;
+    cursors.clear();
+    nodes.length = 0;
+    return visit({
+      type: P.ProgressSection,
+      props: {
+        summary: summaryOf(over && over.summary),
+        goal: null,
+        t: pt,
+        waiting: over ? over.waiting === true : false,
+        running: over ? over.running === true : false,
+        cfg: {},
+        asOf: over && over.asOf !== undefined ? over.asOf : null,
+        introSeq: 0,
+      },
+      children: [],
+    });
+  };
+
+  /* running: live HUD, active spotlight, timing text */
+  const runningText = renderProgress({ running: true });
+  const live = ofClass("dsov-live");
+  assert.equal(live.length, 1, "running session shows one live strip");
+  assert.equal(live[0].props["data-state"], "running", "live strip reports the running state");
+  assert.ok(rawText(live[0]).includes("进行中"), "live strip label uses the dictionary");
+  assert.ok(rawText(live[0]).includes("npm test"), "live strip names the current step");
+  assert.equal(ofClass("dsov-liveBars").length, 1, "live strip carries the equalizer");
+  assert.equal(nodes.filter((node) => node.type === "i").length, 5, "equalizer has five bars");
+  assert.equal(ofClass("dsov-liveClock").length, 1, "live strip ticks a clock");
+  assert.ok(/已 \d+s/.test(rawText(ofClass("dsov-liveClock")[0])), "clock is formatted as elapsed time");
+  assert.ok(runningText.includes("npm test"), "running step row is rendered");
+  const activeRows = ofClass("dsov-step").filter((node) => node.props["data-active"] === "true");
+  assert.equal(activeRows.length, 1, "exactly one step is spotlighted");
+  assert.ok(rawText(activeRows[0]).includes("bash"), "spotlight lands on the running step");
+  const liveSection = ofClass("dsov-section")[0];
+  assert.equal(liveSection.props["data-live"], "true", "progress section carries the live state");
+
+  /* the todo counter lives inside the status row: one meter, never a second bar */
+  const todoItems = [
+    { status: "completed", content: "步骤一" },
+    { status: "completed", content: "步骤二" },
+    { status: "completed", content: "步骤三" },
+    { status: "completed", content: "步骤四" },
+    { status: "in_progress", content: "步骤五" },
+    { status: "pending", content: "步骤六" },
+    { status: "pending", content: "步骤七" },
+  ];
+  renderProgress({ running: true, summary: { todos: todoItems } });
+  const meterLive = ofClass("dsov-live");
+  assert.equal(meterLive.length, 1, "todos fold into the only status row");
+  assert.equal(meterLive[0].props["data-state"], "running", "status row stays live while the turn runs");
+  const meterNode = ofClass("dsov-liveMeter");
+  assert.equal(meterNode.length, 1, "status row carries the todo meter");
+  assert.equal(meterNode[0].props.role, "progressbar", "meter is a progressbar");
+  assert.equal(meterNode[0].props["aria-valuenow"], 4, "meter reports completed todos");
+  assert.equal(meterNode[0].props["aria-valuemax"], 7, "meter reports the todo total");
+  assert.ok(String(meterNode[0].props["aria-valuetext"]).includes("1 进行中 · 2 待处理"), "meter value text carries the breakdown");
+  assert.equal(ofClass("dsov-liveMeterCount").length, 1, "live meter shows its compact counter");
+  assert.equal(rawText(ofClass("dsov-liveMeterCount")[0]), "4/7", "compact counter reads completed/total");
+  assert.equal(nodes.filter((node) => node.type === "i").length, 0, "the meter replaces the equalizer");
+  assert.equal(ofClass("dsov-progress").length, 0, "the standalone progress bar is gone");
+  assert.equal(ofClass("dsov-todo").length, 7, "todo rows still render");
+
+  /* the turn ended with open items: the same row turns into a neutral summary */
+  renderProgress({ running: false, summary: { todos: todoItems } });
+  const summaryLive = ofClass("dsov-live");
+  assert.equal(summaryLive.length, 1, "ended turn keeps the row as a summary");
+  assert.equal(summaryLive[0].props["data-state"], "summary", "summary state after the turn ends");
+  assert.equal(summaryLive[0].props.role, undefined, "summary row is not a live region");
+  assert.equal(ofClass("dsov-liveClock").length, 0, "summary row has no clock");
+  assert.equal(ofClass("dsov-liveBars").length, 0, "summary row has no equalizer");
+  assert.equal(ofClass("dsov-liveMeterCount").length, 0, "summary does not repeat the counter");
+  const summaryText = rawText(summaryLive[0]);
+  assert.ok(summaryText.includes("4/7 已完成"), `summary counts: ${summaryText}`);
+  assert.ok(summaryText.includes("1 进行中 · 2 待处理"), `summary says what is left: ${summaryText}`);
+  assert.ok(String(summaryLive[0].props.title).includes(P.zh["progress.staleHint"]), "summary title explains the snapshot");
+
+  /* every item done: the dot closes green and no leftover hint remains */
+  renderProgress({ running: false, summary: { todos: todoItems.map((item) => ({ ...item, status: "completed" })) } });
+  const completeLive = ofClass("dsov-live")[0];
+  assert.equal(completeLive.props["data-complete"], "true", "all-done summary marks completion");
+  assert.ok(rawText(completeLive).includes("7/7 已完成"), "all-done summary counts");
+  assert.ok(!rawText(completeLive).includes("待处理"), "all-done summary drops the leftover hint");
+
+  /* waiting with a plan: meter on the right, no running equalizer */
+  renderProgress({ running: true, waiting: true, summary: { todos: todoItems } });
+  const waitingMeter = ofClass("dsov-live")[0];
+  assert.equal(waitingMeter.props["data-state"], "waiting", "waiting with todos stays waiting");
+  assert.equal(ofClass("dsov-liveBars").length, 0, "waiting with todos shows the meter, not the equalizer");
+  assert.equal(ofClass("dsov-liveMeter").length, 1, "waiting keeps the meter");
+
+  /* scrubbing still shows the snapshot's summary, never a live cue */
+  renderProgress({
+    running: true,
+    asOf: now - 1000,
+    summary: { todos: todoItems, todoHistory: [{ turn: 1, time: now - 6000, todos: todoItems }] },
+  });
+  const scrubbedLive = ofClass("dsov-live");
+  assert.equal(scrubbedLive.length, 1, "scrubbed view keeps the todo summary");
+  assert.equal(scrubbedLive[0].props["data-state"], "summary", "scrubbing never shows a live cue");
+  assert.equal(scrubbedLive[0].props.role, undefined, "scrubbed summary is not a live region");
+
+  /* collapsed body keeps its natural height, so no scrollbar can appear mid-step */
+  renderProgress({ running: false, summary: { todos: todoItems } });
+  assert.equal(ofClass("dsov-section")[0].props["data-body"], "auto", "collapsed progress body keeps natural height");
+  assert.equal(ofClass("dsov-stepsHeadLabel").length, 0, "todo view has no steps head");
+
+  /* expansion pins the body height and repeats the collapse control at the end */
+  const manySteps = Array.from({ length: 9 }, (_, index) => ({
+    callId: `m${index + 1}`,
+    name: "read",
+    seq: index + 1,
+    detail: `f${index}.md`,
+    full: `f${index}.md`,
+    time: now - 20000 + index * 1000,
+    endTime: now - 19500 + index * 1000,
+    done: true,
+    error: false,
+  }));
+  for (const slots of slotsByType.values()) slots.length = 0;
+  cursors.clear();
+  nodes.length = 0;
+  const expandProps = {
+    summary: summaryOf({ todos: null, steps: manySteps.slice(0, 6), stepsAll: manySteps }),
+    goal: null,
+    t: pt,
+    waiting: false,
+    running: false,
+    cfg: {},
+    asOf: null,
+    introSeq: 0,
+  };
+  visit({ type: P.ProgressSection, props: expandProps, children: [] });
+  const headToggle = ofClass("dsov-moreSteps");
+  assert.equal(headToggle.length, 1, "collapsed list offers the expander");
+  assert.equal(ofClass("dsov-stepsHeadLabel").length, 1, "steps head carries the truncating label");
+  assert.equal(ofClass("dsov-section")[0].props["data-body"], "auto", "collapsed steps body is auto");
+  headToggle[0].props.onClick();
+  nodes.length = 0;
+  visit({ type: P.ProgressSection, props: { ...expandProps }, children: [] });
+  assert.equal(ofClass("dsov-section")[0].props["data-body"], "fixed", "expanded body pins its height");
+  assert.equal(ofClass("dsov-stepsFoot").length, 1, "expanded list repeats the collapse control");
+  assert.ok(rawText(ofClass("dsov-stepsFoot")[0]).includes("收起早期步骤"), "foot control collapses the list");
+  assert.equal(ofClass("dsov-step").length, 9, "expanded list renders every step");
+
+  /* waiting: warn-toned strip, no brand spotlight */
+  renderProgress({ running: true, waiting: true });
+  const waitingLive = ofClass("dsov-live")[0];
+  assert.equal(waitingLive.props["data-state"], "waiting", "waiting state switches the strip");
+  assert.ok(rawText(waitingLive).includes("等待确认"), "waiting strip reuses the confirmation label");
+  assert.equal(ofClass("dsov-step").filter((node) => node.props["data-active"] === "true").length, 0, "waiting suppresses the brand spotlight");
+
+  /* idle: no live cue and no live section rim */
+  renderProgress({ running: false, waiting: false });
+  assert.equal(ofClass("dsov-live").length, 0, "idle overview shows no live strip");
+  assert.equal(ofClass("dsov-section")[0].props["data-live"], undefined, "idle section is not live");
+
+  /* timeline scrubbing / older turn: never live */
+  renderProgress({ running: true, asOf: now - 1000 });
+  assert.equal(ofClass("dsov-live").length, 0, "scrubbing hides the live strip");
+  renderProgress({ running: true, summary: { scope: "turn:2", latestTurn: 3, turns: [1, 2, 3] } });
+  assert.equal(ofClass("dsov-live").length, 0, "viewing an older turn hides the live strip");
+
+  /* running without a current tool step: the HUD says the model is generating */
+  renderProgress({ running: true, summary: { steps: [], stepsAll: [] } });
+  const thinkingLive = ofClass("dsov-live")[0];
+  assert.ok(rawText(thinkingLive).includes("正在生成"), "thinking-only turn reads as generating");
+  assert.equal(thinkingLive.props["data-state"], "running", "thinking-only turn stays in the running state");
+
+  /* CSS: amplified enter/exit, conveyor nudge, spotlight, completion pop, live cues */
+  const flat = clientSource.replace(/\n/g, "");
+  assert.ok(flat.includes("@keyframes dsov-liveSweep"), "live sweep keyframe exists");
+  assert.ok(flat.includes("@keyframes dsov-liveHalo"), "live pulse keyframe exists");
+  assert.ok(flat.includes("@keyframes dsov-liveBar"), "equalizer keyframe exists");
+  assert.ok(/@keyframes dsov-stepIn\{0%\{[^}]*translateY\(14px\)/.test(flat), "step enter starts lower");
+  assert.ok(/@keyframes dsov-stepOut\{[\s\S]*?translateY\(-16px\)/.test(flat), "step exit flies further up");
+  assert.ok(flat.includes("@keyframes dsov-stepsNudgeA") && flat.includes("@keyframes dsov-stepsNudgeB"), "both nudge variants exist");
+  assert.ok(flat.includes(".dsov-steps[data-nudge=odd]") && flat.includes(".dsov-steps[data-nudge=even]"), "nudge alternates by attribute");
+  assert.ok(flat.includes("@keyframes dsov-stepHit"), "completion pop keyframe exists");
+  assert.ok(flat.includes(".dsov-step[data-active=true]"), "spotlight styles exist");
+  assert.ok(flat.includes(".dsov-step[data-hit=true]"), "completion styles exist");
+  assert.ok(flat.includes(".dsov-live{"), "live strip styles exist");
+  assert.ok(flat.includes(".dsov-section[data-full=true] .dsov-live{position:relative"), "full-height mode drops the live sticky pin");
+  const reduceAt = clientSource.indexOf("@media (prefers-reduced-motion: reduce)");
+  const reduced = reduceAt < 0 ? "" : clientSource.slice(reduceAt);
+  assert.ok(reduced.includes(".dsov-live::before") && reduced.includes(".dsov-step[data-active=true]") && reduced.includes(".dsov-steps[data-nudge]"), "reduced motion disables the new animations");
+  assert.ok(flat.includes(".dsov-liveMeterTrack") && flat.includes(".dsov-liveMeterFill"), "meter styles exist");
+  assert.ok(flat.includes(".dsov-live[data-state=summary] .dsov-liveMeterFill{background:var(--dsw-alias-state-success-primary"), "summary meter fills in the success accent");
+  assert.ok(flat.includes(".dsov-live[data-state=waiting] .dsov-liveMeterFill{background:var(--dsw-alias-state-warn-primary"), "waiting meter follows the warn accent");
+  assert.ok(!flat.includes(".dsov-progress{"), "standalone progress-bar styles are gone");
+  assert.ok(flat.includes(".dsov-live[data-state=summary]{"), "summary state styles exist");
+  assert.ok(flat.includes(".dsov-live[data-state=waiting] .dsov-liveBars i{background:var(--dsw-alias-state-warn-primary,#ff9f0a);animation:none"), "waiting equalizer freezes");
+  assert.ok(flat.includes(".dsov-live[data-state=waiting]::before{background:linear-gradient(100deg"), "waiting sweep rule exists");
+  assert.ok(flat.includes("animation:none;transform:translateX(-120%)"), "waiting sweep pauses");
+  assert.ok(flat.includes(".dsov-stepsHeadLabel") && flat.includes(".dsov-stepsFoot"), "steps head/foot styles exist");
+  assert.ok(flat.includes(".dsov-stepsHead{display:flex;align-items:center;gap:8px;font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));letter-spacing:.02em;padding:2px 2px 6px}"), "steps head rhythm");
+  assert.ok(flat.split("scrollbar-gutter:stable").length - 1 === 3, "overview scrollports reserve the scrollbar channel");
+  assert.ok(flat.includes(".dsov-section[data-body=auto] .dsov-secBody{max-height:none;overflow:visible}"), "auto body drops the cap");
+  assert.ok(flat.includes(".dsov-section[data-body=fixed] .dsov-secBody{height:320px"), "fixed body pins its height");
+  assert.ok(flat.includes(".dsov-section[data-body=auto] .dsov-live{position:relative"), "auto body drops the sticky pin");
+  assert.ok(flat.includes("margin:0 0 6px;padding:6px 9px;border-radius:10px;"), "status row keeps a 6px rhythm");
+  assert.ok(flat.includes(".dsov-goal{display:flex;flex-direction:column;gap:3px;margin:0 0 6px"), "goal keeps its gap without the bar");
+  assert.ok(flat.includes(".dsov-moreSteps:focus-visible"), "step toggle shows a keyboard focus ring");
+  assert.ok(reduced.includes(".dsov-liveMeterFill{transition:none}"), "reduced motion drops the meter transition");
+
+  /* helper units: todo counters and the review-submit tab handoff */
+  assert.deepEqual(P.summarizeTodos(todoItems), { total: 7, completed: 4, running: 1, pending: 2, leftover: 3 }, "todo counters");
+  assert.deepEqual(P.summarizeTodos([{ status: "nonsense" }]), { total: 1, completed: 0, running: 0, pending: 1, leftover: 1 }, "unknown status counts as pending");
+  assert.deepEqual(P.summarizeTodos(null), { total: 0, completed: 0, running: 0, pending: 0, leftover: 0 }, "no plan counts zero");
+  const tabCalls = [];
+  assert.equal(
+    P.finishPlanReviewTab({
+      actions: {
+        openTab: (kind, options) => tabCalls.push(["open", kind, options]),
+        close: () => tabCalls.push(["close"]),
+      },
+    }),
+    true,
+    "review submit hands the tab back"
+  );
+  assert.deepEqual(tabCalls[0], ["open", P.TAB_KIND, { replaceTab: true }], "the overview replaces the plan tab");
+  assert.equal(tabCalls.length, 1, "replaceTab closes the plan tab in the same step");
+  const fallbackCalls = [];
+  assert.equal(
+    P.finishPlanReviewTab({
+      actions: {
+        openTab: () => {
+          throw new Error("no overview type");
+        },
+        close: () => fallbackCalls.push("close"),
+      },
+    }),
+    true,
+    "a missing overview type still closes the tab"
+  );
+  assert.deepEqual(fallbackCalls, ["close"], "fallback closes the plan tab");
+  assert.equal(P.finishPlanReviewTab(null), false, "no tab surface reports failure");
+  assert.equal(
+    P.finishPlanReviewTab({
+      actions: {
+        openTab: () => {
+          throw new Error("x");
+        },
+        close: () => {
+          throw new Error("y");
+        },
+      },
+    }),
+    false,
+    "both channels failing reports failure"
+  );
+
+  /* dictionary parity for the new live keys */
+  for (const key of ["progress.live", "progress.liveThinking", "progress.liveElapsed", "progress.liveElapsedTitle", "progress.meterTitle", "progress.leftover", "progress.staleHint"]) {
+    assert.equal(typeof P.zh[key], "string", `zh has ${key}`);
+    assert.equal(typeof P.en[key], "string", `en has ${key}`);
+  }
 }
 
 console.log("\nALL TESTS PASSED");

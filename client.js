@@ -24,6 +24,40 @@ window.__ModuleLoader__.load({
        as clickable chips and external links open in a new tab; borrow the provider too. */
     const ChatMarkdownProvider = primitives !== null && typeof primitives.MarkdownDelegateProvider === "function" ? primitives.MarkdownDelegateProvider : null;
 
+    /* Floating layers must not live inside the overview's sticky toolbar: that wrapper
+       is transform-pinned (and carries a backdrop-filter once stuck), and both make a
+       containing block for `position: fixed` children, so viewport-anchored popovers
+       land in the wrong place after the conversation scrolls. The host chat renders its
+       own popovers through react-dom portals for the same reason. */
+    const ReactDOM = (() => {
+      try {
+        const module = require("react-dom");
+        return module && typeof module.createPortal === "function" ? module : null;
+      } catch (error) {
+        return null;
+      }
+    })();
+    const createPortal = ReactDOM !== null ? ReactDOM.createPortal : null;
+    let overlayHost = null;
+
+    const overlayNode = () => {
+      if (createPortal === null) return null;
+      if (overlayHost !== null && overlayHost.isConnected !== false) return overlayHost;
+      if (typeof document === "undefined" || !document.body || typeof document.body.appendChild !== "function") return null;
+      const host = document.createElement("div");
+      host.className = "dsov-overlayHost";
+      host.setAttribute("data-dsov-overlay", "true");
+      document.body.appendChild(host);
+      overlayHost = host;
+      return host;
+    };
+
+    /** Portal a fixed-position popover to the body, or render it in place without a DOM. */
+    const renderOverlay = (node) => {
+      const host = overlayNode();
+      return host === null ? node : createPortal(node, host);
+    };
+
     function cx(...parts) {
       return parts.filter((part) => typeof part === "string" && part.length > 0).join(" ");
     }
@@ -43,7 +77,7 @@ window.__ModuleLoader__.load({
     const RELEASE_TAGS_API_URL = "https://api.github.com/repos/LingF/dsh-conversation-overview/tags?per_page=100";
     const TAGS_URL = "https://github.com/LingF/dsh-conversation-overview/tags";
     /* keep in sync with package.json */
-    const PLUGIN_VERSION = "1.1.0";
+    const PLUGIN_VERSION = "1.7.0";
     const LATEST_CACHE_KEY = "dsh.conversationOverview.latestRelease";
     const LATEST_CACHE_TTL = 6 * 60 * 60 * 1000;
     const latestStore = { tag: null, via: "release", loaded: false, inflight: null };
@@ -234,7 +268,14 @@ window.__ModuleLoader__.load({
       "progress.todoCopied": "未找到对话框，提示词已复制到剪贴板",
       "progress.todoFailed": "填入失败，请重试",
       "progress.waiting": "等待确认",
+      "progress.live": "进行中",
+      "progress.liveThinking": "正在生成…",
+      "progress.liveElapsed": "已 {v}",
+      "progress.liveElapsedTitle": "当前步骤已用时；没有执行中的步骤时为本轮用时",
       "progress.counts": "{completed}/{total} 已完成",
+      "progress.meterTitle": "{completed}/{total} 已完成 · {running} 进行中 · {pending} 待处理",
+      "progress.leftover": "{running} 进行中 · {pending} 待处理",
+      "progress.staleHint": "待办状态取自执行方的最后一次更新；本轮结束时仍有未完成项",
       "artifacts.empty": "本次对话产出的文件将在此展示",
       "artifacts.viewAll": "查看所有改动",
       "settings.summary": "控制概览的板块与显示位置",
@@ -489,6 +530,53 @@ window.__ModuleLoader__.load({
       "role.parentPrefix": "·",
       "state.noSession": "当前没有打开的会话",
       "state.error": "概览渲染失败",
+      "planWorkbench.action": "批注并修改",
+      "planWorkbench.actionHint": "逐段批注或直接改写计划，提交后请求模型修订；与「要求修改」同级的细粒度方式",
+      "planWorkbench.openFailed": "侧边栏不可用，无法打开计划工作台",
+      "planWorkbench.tabTitle": "计划工作台",
+      "planWorkbench.reviewPending": "待审阅",
+      "planWorkbench.reviewClosed": "审阅已结束",
+      "planWorkbench.modes": "工作台模式",
+      "planWorkbench.modeAnnotate": "批注",
+      "planWorkbench.modeEdit": "改写",
+      "planWorkbench.openOriginal": "打开原计划",
+      "planWorkbench.open": "计划操作",
+      "planWorkbench.whole": "整体意见",
+      "planWorkbench.preface": "开头",
+      "planWorkbench.addHere": "在此处批注",
+      "planWorkbench.addAria": "在「{heading}」处批注",
+      "planWorkbench.commentPlaceholder": "这一节要怎么改…",
+      "planWorkbench.commentAria": "批注「{heading}」",
+      "planWorkbench.save": "保存批注",
+      "planWorkbench.cancel": "取消",
+      "planWorkbench.remove": "删除批注",
+      "planWorkbench.editHint": "直接改写全文；提交时以这份修订稿为准。",
+      "planWorkbench.editAria": "编辑计划全文",
+      "planWorkbench.editSave": "保存草稿",
+      "planWorkbench.editSaved": "草稿已保存",
+      "planWorkbench.revert": "恢复原文",
+      "planWorkbench.count": "{n} 条批注",
+      "planWorkbench.empty": "还没有批注或改写",
+      "planWorkbench.submitReview": "提交批注并请求修订",
+      "planWorkbench.submitDraft": "带入输入框",
+      "planWorkbench.submitComposer": "插入输入框",
+      "planWorkbench.submitting": "提交中…",
+      "planWorkbench.copyFeedback": "复制反馈",
+      "planWorkbench.submitted": "已提交，等待模型修订计划",
+      "planWorkbench.drafted": "已带入输入框，检查后可发送",
+      "planWorkbench.copied": "已复制",
+      "planWorkbench.copyFailed": "复制失败，请手动选择文本",
+      "planWorkbench.failed": "提交失败",
+      "planWorkbench.unavailable": "计划内容不可用（宿主计划页或会话记录缺失），可打开原计划查看。",
+      "planWorkbench.untitled": "未命名计划",
+      "planWorkbench.menuAnnotate": "批注修改",
+      "planWorkbench.menuCopy": "复制计划",
+      "planWorkbench.feedbackIntro": "我在计划《{title}》上做了批注，请据此修订计划；若仍处于计划模式，修订后请重新调用 exit_plan_mode 提交，先不要执行。",
+      "planWorkbench.feedbackHead": "{n}. 「{heading}」",
+      "planWorkbench.feedbackQuote": "原文：{quote}",
+      "planWorkbench.feedbackComment": "批注：{comment}",
+      "planWorkbench.feedbackEdit": "另外，我直接改写了计划，请以这份修订稿为准（并回应上面的批注）：",
+      "planWorkbench.feedbackOutro": "未涉及的部分保持不变。",
     };
 
     const en = {
@@ -519,12 +607,19 @@ window.__ModuleLoader__.load({
       "progress.todoCopied": "Composer not found — prompt copied to the clipboard",
       "progress.todoFailed": "Could not fill the composer, try again",
       "progress.waiting": "Waiting for confirmation",
+      "progress.live": "Live",
+      "progress.liveThinking": "Generating…",
+      "progress.liveElapsed": "{v} in",
+      "progress.liveElapsedTitle": "Elapsed for the current step; for this turn while no step is running",
       "team.phase.provisioning": "Provisioning",
       "team.phase.active": "Active",
       "team.phase.inactive": "Inactive",
       "team.phase.failed": "Failed",
       "team.blocked": "Blocked {n}",
       "progress.counts": "{completed} of {total} completed",
+      "progress.meterTitle": "{completed} of {total} completed · {running} in progress · {pending} pending",
+      "progress.leftover": "{running} in progress · {pending} pending",
+      "progress.staleHint": "Todo state follows the agent's last update; items were still open when the turn ended",
       "artifacts.empty": "Files produced in this conversation appear here",
       "artifacts.viewAll": "Review all changes",
       "settings.summary": "Control the overview sections and where they appear",
@@ -779,6 +874,53 @@ window.__ModuleLoader__.load({
       "role.parentPrefix": "·",
       "state.noSession": "No session is open",
       "state.error": "Overview failed to render",
+      "planWorkbench.action": "Annotate & revise",
+      "planWorkbench.actionHint": "Annotate each section or rewrite the plan, then request the revision; a finer-grained alternative to Request changes",
+      "planWorkbench.openFailed": "No sidebar available to open the plan workbench",
+      "planWorkbench.tabTitle": "Plan workbench",
+      "planWorkbench.reviewPending": "Awaiting review",
+      "planWorkbench.reviewClosed": "Review closed",
+      "planWorkbench.modes": "Workbench mode",
+      "planWorkbench.modeAnnotate": "Annotate",
+      "planWorkbench.modeEdit": "Rewrite",
+      "planWorkbench.openOriginal": "Open plan",
+      "planWorkbench.open": "Plan actions",
+      "planWorkbench.whole": "Whole plan",
+      "planWorkbench.preface": "Opening",
+      "planWorkbench.addHere": "Annotate here",
+      "planWorkbench.addAria": "Annotate “{heading}”",
+      "planWorkbench.commentPlaceholder": "How should this section change…",
+      "planWorkbench.commentAria": "Annotation for “{heading}”",
+      "planWorkbench.save": "Save annotation",
+      "planWorkbench.cancel": "Cancel",
+      "planWorkbench.remove": "Delete annotation",
+      "planWorkbench.editHint": "Rewrite the plan directly; submitting sends this revision as the plan.",
+      "planWorkbench.editAria": "Edit the plan markdown",
+      "planWorkbench.editSave": "Save draft",
+      "planWorkbench.editSaved": "Draft saved",
+      "planWorkbench.revert": "Revert to original",
+      "planWorkbench.count": "{n} annotation(s)",
+      "planWorkbench.empty": "No annotations or rewrite yet",
+      "planWorkbench.submitReview": "Submit for revision",
+      "planWorkbench.submitDraft": "Put in composer",
+      "planWorkbench.submitComposer": "Insert into composer",
+      "planWorkbench.submitting": "Submitting…",
+      "planWorkbench.copyFeedback": "Copy feedback",
+      "planWorkbench.submitted": "Submitted; waiting for the revised plan",
+      "planWorkbench.drafted": "Put in the composer; review before sending",
+      "planWorkbench.copied": "Copied",
+      "planWorkbench.copyFailed": "Copy failed; select the text manually",
+      "planWorkbench.failed": "Submit failed",
+      "planWorkbench.unavailable": "Plan text unavailable (host plan page or session log missing). Open the original plan instead.",
+      "planWorkbench.untitled": "Untitled plan",
+      "planWorkbench.menuAnnotate": "Annotate",
+      "planWorkbench.menuCopy": "Copy plan",
+      "planWorkbench.feedbackIntro": "I annotated the plan “{title}”. Please revise the plan accordingly; if still in plan mode, call exit_plan_mode again with the revision and do not start executing yet.",
+      "planWorkbench.feedbackHead": "{n}. “{heading}”",
+      "planWorkbench.feedbackQuote": "Quote: {quote}",
+      "planWorkbench.feedbackComment": "Annotation: {comment}",
+      "planWorkbench.feedbackEdit": "I also rewrote the plan directly; treat this revision as the source of truth (and address the annotations above):",
+      "planWorkbench.feedbackOutro": "Keep everything else unchanged.",
     };
 
     /* ------------------------------------------------------------------ */
@@ -1708,22 +1850,12 @@ window.__ModuleLoader__.load({
         opens. The plan plugin re-resolves the markdown from the session log by
         tool-call id, so this address stays valid across reloads. */
     function openNativePlan(sessionId, callId) {
-      if (typeof sessionId !== "string" || sessionId === "" || typeof callId !== "string" || callId === "") return false;
+      const address = planResourceAddress(sessionId, callId);
+      if (address === undefined) return false;
       const sidebar = runtime && runtime.ctx ? runtime.ctx.sidebarRight : undefined;
       if (sidebar === undefined || typeof sidebar.openResource !== "function") return false;
-      let segments;
       try {
-        const sessions = runtime.ctx.sessions;
-        const child = sessions !== undefined && typeof sessions.subagentAddress === "function" ? sessions.subagentAddress(sessionId) : undefined;
-        segments =
-          child === undefined
-            ? [sessionId, callId]
-            : ["subagent", child.parentSessionId, child.childSessionId, child.mode, callId];
-      } catch {
-        segments = [sessionId, callId]; /* uninjected ctx access throws; plain sessions are the common case */
-      }
-      try {
-        sidebar.openResource(`dsh-resource://plan/${segments.map(encodeURIComponent).join("/")}`);
+        sidebar.openResource(address);
         return true;
       } catch {
         return false;
@@ -2811,6 +2943,86 @@ window.__ModuleLoader__.load({
       });
     }
 
+    /** Stable identity of one step across renders (callless rows fall back to name|seq). */
+    function stepIdentityOf(step) {
+      if (!isRecord(step)) return "";
+      if (typeof step.callId === "string" && step.callId !== "") return step.callId;
+      return `${typeof step.name === "string" ? step.name : ""}|${typeof step.seq === "number" ? step.seq : ""}`;
+    }
+
+    /** What the sliding step window gained and lost between two renders. */
+    function stepWindowDelta(previous, current) {
+      const before = Array.isArray(previous) ? previous.filter((step) => isRecord(step)) : [];
+      const after = Array.isArray(current) ? current.filter((step) => isRecord(step)) : [];
+      const beforeIds = new Set(before.map(stepIdentityOf));
+      const afterIds = new Set(after.map(stepIdentityOf));
+      return {
+        added: after.filter((step) => !beforeIds.has(stepIdentityOf(step))),
+        dropped: before.filter((step) => !afterIds.has(stepIdentityOf(step))),
+      };
+    }
+
+    /** Running keys that just finished successfully (their rows earn a completion pop). */
+    function completedStepKeys(previousKeys, currentKeys, stepByKey) {
+      const before = Array.isArray(previousKeys) ? previousKeys : [];
+      const now = new Set(Array.isArray(currentKeys) ? currentKeys : []);
+      const hits = [];
+      for (const key of before) {
+        if (now.has(key)) continue;
+        const step = stepByKey !== null && typeof stepByKey.get === "function" ? stepByKey.get(key) : undefined;
+        if (!isRecord(step) || step.done !== true || step.error === true) continue;
+        hits.push(key);
+      }
+      return hits;
+    }
+
+    /** The last step still running (approval children are rendered under their call). */
+    function liveStepOf(steps) {
+      const list = Array.isArray(steps) ? steps : [];
+      for (let index = list.length - 1; index >= 0; index -= 1) {
+        const step = list[index];
+        if (!isRecord(step) || step.name === "approval") continue;
+        if (step.done !== true && step.error !== true) return step;
+      }
+      return null;
+    }
+
+    /** Whether a live cue makes sense for this scope: whole session / latest / current turn. */
+    function liveScopeMatches(scope, latestTurn) {
+      if (scope === "all" || scope === "latest") return true;
+      if (typeof scope !== "string" || !scope.startsWith("turn:")) return false;
+      const turn = Number.parseInt(scope.slice(5), 10);
+      return Number.isFinite(turn) && Number.isFinite(latestTurn) && turn === latestTurn;
+    }
+
+    /** Todo counters for the progress status row: the meter, its label and leftover hint
+        must always describe the same snapshot, so they read from one place. */
+    function summarizeTodos(todos) {
+      const list = Array.isArray(todos) ? todos.filter((item) => isRecord(item)) : [];
+      let completed = 0;
+      let running = 0;
+      for (const item of list) {
+        if (item.status === "completed") completed += 1;
+        else if (item.status === "in_progress") running += 1;
+      }
+      const total = list.length;
+      const pending = total - completed - running;
+      return { total, completed, running, pending, leftover: running + pending };
+    }
+
+    /** Ticking clock for the live strip; zero when inactive or without a base time. */
+    function useLiveElapsed(active, start) {
+      const [now, setNow] = React.useState(() => (typeof Date === "function" ? Date.now() : 0));
+      React.useEffect(() => {
+        if (active !== true) return undefined;
+        setNow(Date.now());
+        const timer = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(timer);
+      }, [active, start]);
+      if (active !== true || typeof start !== "number" || !Number.isFinite(start) || start <= 0) return 0;
+      return Math.max(0, now - start);
+    }
+
     /** One-line human target for a tool call: file, command, query, url, name… */
     /** Team-record key a tool call creates: teammate name / task subject / subagent label. */
     /** Word/bigram tokens of one todo or delegate text: latin words plus CJK bigrams, so
@@ -3624,7 +3836,12 @@ window.__ModuleLoader__.load({
       const views = new Map();
       let folder = createFolder();
       folder.sessionId = typeof binding.sessionId === "string" ? binding.sessionId : null;
-      let lastWindow = { hasMore: false };
+      /* The feed snapshot's `change` is a delta against the snapshot it was derived
+         from, not against this folder: a store mounted mid-turn (or a missed publish)
+         must not fold a delta into an empty/older window. `lastRevision` lets a single
+         skipped publish fall back to a full rebuild instead of appending out of order. */
+      let lastWindow = null;
+      let lastRevision = null;
       let localeRev = 0;
 
       const store = {
@@ -3661,6 +3878,7 @@ window.__ModuleLoader__.load({
         for (const entry of windowSnapshot.entries) foldEntry(folder, entry, cwd);
         folder.changed = false;
         lastWindow = windowSnapshot;
+        lastRevision = typeof windowSnapshot.revision === "number" ? windowSnapshot.revision : null;
         views.clear();
         notify();
       };
@@ -3669,26 +3887,43 @@ window.__ModuleLoader__.load({
         const windowSnapshot = source.getSnapshot();
         if (windowSnapshot === lastWindow) return;
         const previous = lastWindow;
-        const change = windowSnapshot.change;
-        const appended = previous !== null && isRecord(change) && change.kind === "append" && Array.isArray(change.entries) ? change.entries : null;
-        if (appended !== null) {
+        const change = isRecord(windowSnapshot.change) ? windowSnapshot.change : null;
+        const revision = typeof windowSnapshot.revision === "number" ? windowSnapshot.revision : null;
+        /* A delta is only usable when this store consumed the snapshot it was derived
+           from: first read, replace, or a revision gap means rebuild from entries. */
+        const contiguous =
+          previous !== null &&
+          previous.entries !== undefined &&
+          change !== null &&
+          change.kind !== "replace" &&
+          (revision === null || lastRevision === null || revision === lastRevision + 1);
+        if (contiguous === true && change.kind === "append") {
+          const appended = Array.isArray(change.entries) ? change.entries : [];
           // Live streaming rows carry nothing durable; skip them without a rebuild.
-          if (appended.every((entry) => isRecord(entry) && entry.type === "transient")) return;
-          if (appended.every((entry) => isRecord(entry) && entry.type !== "transient" && isRecord(entry.event))) {
+          if (appended.length > 0 && appended.every((entry) => isRecord(entry) && entry.type === "transient")) {
             lastWindow = windowSnapshot;
+            if (revision !== null) lastRevision = revision;
+            return;
+          }
+          if (appended.length > 0 && appended.every((entry) => isRecord(entry) && entry.type !== "transient" && isRecord(entry.event))) {
             const cwd = sessionCwd(binding.sessionId);
-            for (const entry of appended) foldEntry(folder, entry, cwd);
-            if (folder.changed || windowSnapshot.hasMore !== (previous.hasMore === true)) {
+            try {
+              for (const entry of appended) foldEntry(folder, entry, cwd);
+            } catch {
+              /* A half-folded folder cannot be trusted; rebuild from the snapshot. */
+              fullRebuild(windowSnapshot);
+              return;
+            }
+            const hasMoreChanged = (previous.hasMore === true) !== (windowSnapshot.hasMore === true);
+            lastWindow = windowSnapshot;
+            if (revision !== null) lastRevision = revision;
+            if (folder.changed || hasMoreChanged) {
               folder.changed = false;
               views.clear();
               notify();
             }
             return;
           }
-        }
-        if (windowSnapshot.entries.length === 0 && previous !== null && previous.entries !== undefined && previous.entries.length === 0) {
-          lastWindow = windowSnapshot;
-          return;
         }
         fullRebuild(windowSnapshot);
       };
@@ -4941,7 +5176,7 @@ function FileTypeIcon(props) {
       return { introAttr: introSeq % 2 === 0 ? "even" : "odd", introDelay: delayMs };
     }
 
-    function Section({ id, icon, title, badge, empty, action, children, introAttr, introDelay }) {
+    function Section({ id, icon, title, badge, empty, action, children, introAttr, introDelay, live, bodyMode }) {
       const [open, setOpen] = React.useState(() => collapsedSections.get(id) !== true);
       const cfg = useConfig();
       const kids = Array.isArray(children) ? children.filter((child) => child !== null && child !== undefined && child !== false) : children ? [children] : [];
@@ -4955,6 +5190,8 @@ function FileTypeIcon(props) {
         {
           className: "dsov-section",
           "data-full": cfg.sectionFullHeight === true ? "true" : "false",
+          "data-live": live === true ? "true" : undefined,
+          "data-body": bodyMode,
           "data-intro": introAttr,
           style: typeof introDelay === "number" ? { animationDelay: `${introDelay}ms` } : undefined,
         },
@@ -5003,7 +5240,7 @@ function FileTypeIcon(props) {
       complete: "success",
     };
 
-    function ProgressSection({ summary, goal, t, waiting, cfg, asOf, introSeq }) {
+    function ProgressSection({ summary, goal, t, waiting, running, cfg, asOf, introSeq }) {
       const fmtTime = (ts) => formatTime(ts, cfg.timeMode, summary.turnStart);
       const timeTitle = (ts) => (cfg.timeMode === "elapsed" ? formatTime(ts) : undefined);
       /* timeline scrubbing: only what already happened at `asOf` is shown */
@@ -5066,6 +5303,24 @@ function FileTypeIcon(props) {
       /* steps: newest-first window; keep the evicted bottom row as a fading ghost */
       const stepsRaw = Array.isArray(summary.steps) ? summary.steps.filter((step) => isRecord(step)) : [];
       const stepsAllRaw = Array.isArray(summary.stepsAll) ? summary.stepsAll.filter((step) => isRecord(step)) : [];
+      /* Live cues only describe work happening now: never while scrubbing the
+         timeline, viewing a historical session, or looking at an older turn. */
+      const liveRunning = running === true && asOfTime === null && liveScopeMatches(summary.scope, summary.latestTurn);
+      const liveWaiting = waiting === true && liveScopeMatches(summary.scope, summary.latestTurn);
+      const liveVisible = liveRunning || liveWaiting;
+      const liveState = liveWaiting ? "waiting" : "running";
+      /* clock base: the running step's own start, else the latest turn's start; the
+         session-wide scope has no single turn, so it only clocks a running step */
+      const liveClockStep = liveRunning ? liveStepOf(stepsRaw) : null;
+      const liveClockBase =
+        liveClockStep !== null && typeof liveClockStep.time === "number" && liveClockStep.time > 0
+          ? liveClockStep.time
+          : summary.scope === "all"
+            ? null
+            : typeof summary.turnStart === "number" && summary.turnStart > 0
+              ? summary.turnStart
+              : null;
+      const liveElapsed = useLiveElapsed(liveRunning && liveClockBase !== null, liveClockBase);
       const stepAt = (step) => asOfTime === null || (typeof step.time === "number" ? step.time <= asOfTime : true);
       /* a step whose result landed after the scrub point reads as still running */
       const stepClamped = (step) => {
@@ -5090,7 +5345,10 @@ function FileTypeIcon(props) {
             })();
       const [ghost, setGhost] = React.useState(null);
       const [stepsExpanded, setStepsExpanded] = React.useState(false);
+      const [listTick, setListTick] = React.useState(0);
+      const [doneHits, setDoneHits] = React.useState(null);
       const ghostTimer = React.useRef(undefined);
+      const hitTimer = React.useRef(undefined);
       const prevSteps = React.useRef([]);
       const prevScope = React.useRef(summary.scope);
       /* enter animation only for rows that arrive while mounted; first paint per scope is silent */
@@ -5156,9 +5414,12 @@ function FileTypeIcon(props) {
         if (step.done !== true && step.error !== true) runningKeys.push(key);
       });
       const runningSig = runningKeys.join("|");
+      const liveStep = liveVisible ? liveStepOf(renderSteps) : null;
       const prevRunningKeys = React.useRef(new Set());
       React.useEffect(() => {
         const now = new Set(runningKeys);
+        const wasRunning = [...prevRunningKeys.current];
+        const finished = completedStepKeys(wasRunning, [...now], stepByKey);
         for (const key of prevRunningKeys.current) {
           if (now.has(key)) continue;
           const step = stepByKey.get(key);
@@ -5166,6 +5427,17 @@ function FileTypeIcon(props) {
           if (overrideOf(`step:${key}`, false)) toggleKey(`step:${key}`, false);
         }
         prevRunningKeys.current = now;
+        if (finished.length === 0) return;
+        setDoneHits((current) => {
+          const next = { ...(current !== null && isRecord(current) ? current : {}) };
+          for (const key of finished) next[key] = true;
+          return next;
+        });
+        if (hitTimer.current !== undefined) clearTimeout(hitTimer.current);
+        hitTimer.current = setTimeout(() => {
+          hitTimer.current = undefined;
+          setDoneHits(null);
+        }, 800);
       }, [runningSig]);
       if (seenSteps.current === null || seenSteps.current.scope !== summary.scope) {
         seenSteps.current = { scope: summary.scope, keys: new Set(renderSteps.map(stepKeyOf)) };
@@ -5173,6 +5445,7 @@ function FileTypeIcon(props) {
       React.useEffect(
         () => () => {
           if (ghostTimer.current !== undefined) clearTimeout(ghostTimer.current);
+          if (hitTimer.current !== undefined) clearTimeout(hitTimer.current);
         },
         []
       );
@@ -5184,15 +5457,17 @@ function FileTypeIcon(props) {
           return;
         }
         if (asOfTime !== null || previous.length === 0) return;
-        const currentIds = new Set(steps.map((step) => step.callId));
-        const dropped = previous.filter((step) => typeof step.callId === "string" && !currentIds.has(step.callId));
-        if (dropped.length === 0) return;
-        setGhost(dropped[dropped.length - 1]);
-        if (ghostTimer.current !== undefined) clearTimeout(ghostTimer.current);
-        ghostTimer.current = setTimeout(() => {
-          ghostTimer.current = undefined;
-          setGhost(null);
-        }, 400);
+        const delta = stepWindowDelta(previous, steps);
+        if (delta.dropped.length > 0) {
+          setGhost(delta.dropped[delta.dropped.length - 1]);
+          if (ghostTimer.current !== undefined) clearTimeout(ghostTimer.current);
+          ghostTimer.current = setTimeout(() => {
+            ghostTimer.current = undefined;
+            setGhost(null);
+          }, 520);
+        }
+        /* alternate two identical keyframes so the conveyor nudge replays on every slide */
+        if (delta.added.length > 0 || delta.dropped.length > 0) setListTick((value) => value + 1);
       }, [steps]);
       /* team data + todos drive both the merged list and the step nesting */
       const team = isRecord(summary.team) ? summary.team : null;
@@ -5491,6 +5766,16 @@ function FileTypeIcon(props) {
         const attached = stepAttachments.get(key);
         const approvals = approvalChildren.get(key);
         const dying = extraProps !== undefined && extraProps["data-exit"] === "true";
+        const activeRow =
+          dying !== true &&
+          liveRunning === true &&
+          liveState !== "waiting" &&
+          stepRunning === true &&
+          failed !== true &&
+          waitingRow !== true &&
+          liveStep !== null &&
+          stepIdentityOf(step) === stepIdentityOf(liveStep);
+        const hitRow = dying !== true && doneHits !== null && isRecord(doneHits) && doneHits[key] === true;
         const body = dying ? null : stepBodyOf(step);
         const gated = !dying && Array.isArray(approvals) && approvals.length > 0;
         const pendingApproval = gated && approvals.some((child) => approvalToneOf(child) === "warn");
@@ -5569,6 +5854,8 @@ function FileTypeIcon(props) {
             key,
             "data-error": failed ? "true" : "false",
             "data-waiting": waitingRow ? "true" : "false",
+            "data-active": activeRow ? "true" : undefined,
+            "data-hit": hitRow ? "true" : undefined,
             "data-flash": flash === "ok" ? "ok" : flash === "err" ? "err" : undefined,
             title: full === "" ? undefined : waitingRow ? `${t("progress.waiting")} · ${full}` : full,
             ...(extraProps === undefined ? {} : extraProps),
@@ -5673,7 +5960,119 @@ function FileTypeIcon(props) {
         if (Array.isArray(rendered)) target.push(...rendered);
         else target.push(rendered);
       };
-      const kids = [];
+      /* Live HUD: one persistent status row above the goal/todos/steps so a long turn
+         stays visibly alive between durable events (a step's own row can be off-window). */
+      const liveName =
+        liveStep === null
+          ? ""
+          : liveStep.name === "compact-checkpoint"
+            ? t("step.compact")
+            : liveStep.name === "approval"
+              ? t("step.approval")
+              : typeof liveStep.name === "string"
+                ? liveStep.name
+                : "";
+      const liveDetail =
+        liveStep !== null && typeof liveStep.detail === "string" && liveStep.detail !== "" ? liveStep.detail : "";
+      const liveFull =
+        liveStep !== null && typeof liveStep.full === "string" && liveStep.full !== "" ? liveStep.full : liveDetail;
+      const liveNowText =
+        liveState === "waiting"
+          ? [liveName, liveDetail].filter((part) => part !== "").join(" · ")
+          : liveStep !== null
+            ? [liveName, liveDetail].filter((part) => part !== "").join(" · ")
+            : t("progress.liveThinking");
+      /* The status row is the section's only chrome: live while the turn runs or
+         waits, and a neutral summary once it ends — the todo counter lives inside it
+         (meter) instead of a second, differently styled progress bar. */
+      const todoSummary = hasTodos ? summarizeTodos(todos) : null;
+      const statusLive = liveVisible === true;
+      const statusState = statusLive ? liveState : "summary";
+      const meterText =
+        todoSummary === null
+          ? ""
+          : t("progress.meterTitle", {
+              completed: todoSummary.completed,
+              total: todoSummary.total,
+              running: todoSummary.running,
+              pending: todoSummary.pending,
+            });
+      const summaryLeftover =
+        todoSummary !== null && todoSummary.leftover > 0
+          ? t("progress.leftover", { running: todoSummary.running, pending: todoSummary.pending })
+          : "";
+      const statusTitle =
+        todoSummary !== null
+          ? summaryLeftover !== "" && !statusLive
+            ? `${meterText} · ${t("progress.staleHint")}`
+            : meterText
+          : liveFull === ""
+            ? undefined
+            : liveFull;
+      const statusLabel = statusLive
+        ? liveState === "waiting"
+          ? t("progress.waiting")
+          : t("progress.live")
+        : todoSummary !== null
+          ? t("progress.counts", { completed: todoSummary.completed, total: todoSummary.total })
+          : "";
+      const statusNow = statusLive ? liveNowText : summaryLeftover;
+      const meterPercent =
+        todoSummary === null || todoSummary.total === 0 ? 0 : Math.round((todoSummary.completed / todoSummary.total) * 100);
+      const liveMeter =
+        todoSummary !== null
+          ? h(
+              "span",
+              {
+                className: "dsov-liveMeter",
+                role: "progressbar",
+                "aria-valuemin": 0,
+                "aria-valuemax": todoSummary.total,
+                "aria-valuenow": todoSummary.completed,
+                "aria-valuetext": meterText,
+              },
+              h("span", { className: "dsov-liveMeterTrack" }, h("span", { className: "dsov-liveMeterFill", style: { width: `${meterPercent}%` } })),
+              statusLive
+                ? h("span", { className: "dsov-liveMeterCount", "aria-hidden": "true" }, `${todoSummary.completed}/${todoSummary.total}`)
+                : null
+            )
+          : null;
+      const liveStrip =
+        statusLive || todoSummary !== null
+          ? h(
+              "div",
+              {
+                className: "dsov-live",
+                key: "live",
+                "data-state": statusState,
+                "data-complete": todoSummary !== null && todoSummary.leftover === 0 ? "true" : undefined,
+                role: statusLive ? "status" : undefined,
+                title: statusTitle,
+              },
+              h("span", { className: "dsov-livePulse", "aria-hidden": "true" }, h("span", { className: "dsov-liveDot" })),
+              h(
+                "span",
+                { className: "dsov-liveText", "aria-live": statusLive ? "polite" : undefined },
+                h("span", { className: "dsov-liveLabel" }, statusLabel),
+                statusNow !== "" ? h("span", { className: "dsov-liveNow" }, statusNow) : null
+              ),
+              liveMeter !== null
+                ? liveMeter
+                : h(
+                    "span",
+                    { className: "dsov-liveBars", "aria-hidden": "true" },
+                    [0, 1, 2, 3, 4].map((index) => h("i", { key: `bar-${index}` }))
+                  ),
+              statusLive && liveElapsed > 0
+                ? h(
+                    "span",
+                    { className: "dsov-liveClock", title: t("progress.liveElapsedTitle"), "aria-hidden": "true" },
+                    t("progress.liveElapsed", { v: formatElapsed(liveElapsed) })
+                  )
+                : null
+            )
+          : null;
+      const kids = liveStrip !== null ? [liveStrip] : [];
       if (goal) {
         /* A session goal is a mode, not a todo: rounds are re-driven automatically.
            The banner says so, carries the phase and the round budget, and names the
@@ -5710,16 +6109,6 @@ function FileTypeIcon(props) {
         );
       }
       if (hasTodos) {
-        const total = todos.length;
-        const done = todos.filter((item) => item.status === "completed").length;
-        kids.push(
-          h(
-            "div",
-            { className: "dsov-progress", key: "bar" },
-            h("div", { className: "dsov-progressTrack" }, h("div", { className: "dsov-progressFill", style: { width: `${Math.round((done / total) * 100)}%` } })),
-            h("div", { className: "dsov-progressMeta" }, t("progress.counts", { completed: done, total }))
-          )
-        );
         const todoRows = [];
         todos.forEach((todo, index) => {
           const status = TODO_KEYS[todo.status] ? todo.status : "pending";
@@ -5849,31 +6238,51 @@ function FileTypeIcon(props) {
           pushStepRow(rows, ghost, `ghost-${ghost.callId}`, { "data-exit": "true" }, false);
         }
         if (hasTeam) pushFlatTeam(rows);
+        const stepsHeadText = t(stepsOpen ? "progress.allSteps" : "progress.recentSteps");
+        const stepsToggle = (suffix) =>
+          canExpand
+            ? h(
+                "button",
+                {
+                  type: "button",
+                  key: `stepsToggle-${suffix}`,
+                  className: "dsov-moreSteps",
+                  title: stepsOpen ? t("progress.hideEarlierSteps") : t("progress.moreStepsCount", { n: expandedSteps.length - steps.length }),
+                  "aria-expanded": stepsOpen ? "true" : "false",
+                  onClick: () => setStepsExpanded(!stepsOpen),
+                },
+                t(stepsOpen ? "progress.hideEarlierSteps" : "progress.showEarlierSteps"),
+                h(IconHistory, { size: 12, className: "dsov-moreIcon" })
+              )
+            : null;
         kids.push(
           h(
             "div",
             { className: "dsov-stepsHead", key: "stepsHead" },
-            h("span", null, t(stepsOpen ? "progress.allSteps" : "progress.recentSteps")),
-            canExpand
-              ? h(
-                  "button",
-                  {
-                    type: "button",
-                    className: "dsov-moreSteps",
-                    title: stepsOpen ? t("progress.hideEarlierSteps") : t("progress.moreStepsCount", { n: expandedSteps.length - steps.length }),
-                    onClick: () => setStepsExpanded(!stepsOpen),
-                  },
-                  t(stepsOpen ? "progress.hideEarlierSteps" : "progress.showEarlierSteps"),
-                  h(IconHistory, { size: 12, className: "dsov-moreIcon" })
-                )
-              : null
+            h("span", { className: "dsov-stepsHeadLabel", title: stepsHeadText }, stepsHeadText),
+            stepsToggle("head")
           )
         );
-        kids.push(h("div", { className: "dsov-steps", key: "steps" }, rows));
+        kids.push(h("div", { className: "dsov-steps", key: "steps", "data-nudge": listTick === 0 ? undefined : listTick % 2 === 0 ? "even" : "odd" }, rows));
+        /* An expanded list is long enough to scroll away from its own header control,
+           so the collapse action is repeated where the reading ends. */
+        if (stepsOpen && canExpand) kids.push(h("div", { className: "dsov-stepsFoot", key: "stepsFoot" }, stepsToggle("foot")));
       }
       return h(
         Section,
-        { id: "progress", ...sectionIntroProps(introSeq, 0), icon: h(IconProgress, { size: 15 }), title: t("section.progress"), empty: t(summary.scope === "all" ? "progress.empty" : "progress.emptyTurn") },
+        {
+          id: "progress",
+          ...sectionIntroProps(introSeq, 0),
+          icon: h(IconProgress, { size: 15 }),
+          title: t("section.progress"),
+          empty: t(summary.scope === "all" ? "progress.empty" : "progress.emptyTurn"),
+          live: liveVisible,
+          /* the collapsed list never overflows (six-step window / full todo list), so the
+             body keeps its natural height and can never flash a scrollbar; the expanded
+             list is pinned to one height so arriving steps scroll inside it instead of
+             resizing the section */
+          bodyMode: stepsOpen ? "fixed" : "auto",
+        },
         kids
       );
     }
@@ -5888,9 +6297,13 @@ function FileTypeIcon(props) {
       const cwd = sessionCwd(sessionId);
       const canFileMenu = hostSessionRemote() !== null;
       const [fileMenu, setFileMenu] = React.useState(null);
+      const [planMenu, setPlanMenu] = React.useState(null);
       React.useEffect(() => {
-        if (fileMenu === null) return undefined;
-        const close = () => setFileMenu(null);
+        if (fileMenu === null && planMenu === null) return undefined;
+        const close = () => {
+          setFileMenu(null);
+          setPlanMenu(null);
+        };
         const onKey = (event) => {
           if (event.key === "Escape") close();
         };
@@ -5904,7 +6317,7 @@ function FileTypeIcon(props) {
           window.removeEventListener("scroll", close, true);
           window.removeEventListener("resize", close);
         };
-      }, [fileMenu]);
+      }, [fileMenu, planMenu]);
       const turns = summary.changeTurns;
       const latest = turns.length > 0 ? turns[turns.length - 1] : null;
       const action =
@@ -5923,22 +6336,20 @@ function FileTypeIcon(props) {
         const isConclusion = artifact.kind === "conclusion";
         const isPlan = artifact.plan === true;
         const planName = isPlan ? (typeof artifact.planTitle === "string" && artifact.planTitle !== "" ? artifact.planTitle : t("artifact.plan")) : "";
-        return h(
-          "button",
-          {
-            type: "button",
-            className: "dsov-row",
-            key: `${artifact.path}#${index}`,
-            title: isConclusion ? `${artifact.title} · ${t("artifact.conclusionHint")}` : isPlan ? planName : artifact.description ? `${artifact.path} — ${artifact.description}` : artifact.path,
-            onClick: () => openArtifact(binding, artifact, stats),
-            onContextMenu:
-              canFileMenu && !isMemory && !isPlan && !isConclusion
-                ? (event) => {
-                    event.preventDefault();
-                    setFileMenu({ x: event.clientX, y: event.clientY, path: absPath(cwd, artifact.path) });
-                  }
-                : undefined,
-          },
+        const buttonProps = {
+          type: "button",
+          className: "dsov-row",
+          title: isConclusion ? `${artifact.title} · ${t("artifact.conclusionHint")}` : isPlan ? planName : artifact.description ? `${artifact.path} — ${artifact.description}` : artifact.path,
+          onClick: () => openArtifact(binding, artifact, stats),
+          onContextMenu:
+            canFileMenu && !isMemory && !isPlan && !isConclusion
+              ? (event) => {
+                  event.preventDefault();
+                  setFileMenu({ x: event.clientX, y: event.clientY, path: absPath(cwd, artifact.path) });
+                }
+              : undefined,
+        };
+        const children = [
           h(
             "span",
             { className: "dsov-fileIcon" },
@@ -5964,10 +6375,39 @@ function FileTypeIcon(props) {
           isPlan ? h("span", { className: "dsov-badge", "data-tone": "plan" }, t("artifact.plan")) : null,
           isConclusion ? h("span", { className: "dsov-badge", "data-tone": "brand" }, t("artifact.conclusion")) : null,
           isConclusion && typeof artifact.chars === "number" ? h("span", { className: "dsov-badge", "data-tone": "quiet" }, t("artifact.conclusionChars", { n: artifact.chars })) : null,
-          h("span", { className: "dsov-rowTail" }, h("span", { className: "dsov-time", title: timeTitle(artifact.time) }, fmtTime(artifact.time)))
+          h("span", { className: "dsov-rowTail" }, h("span", { className: "dsov-time", title: timeTitle(artifact.time) }, fmtTime(artifact.time))),
+        ];
+        const rowKey = `${artifact.path}#${index}`;
+        if (!isPlan) return h("button", { ...buttonProps, key: rowKey }, ...children);
+        /* Plan rows keep their click (the host plan page) and gain a hover entry:
+           the workbench needs no new surface to reach already-approved plans. */
+        const hasPlanIdentity =
+          (typeof artifact.planCallId === "string" && artifact.planCallId !== "") || (typeof artifact.previewKey === "string" && artifact.previewKey !== "");
+        return h(
+          "div",
+          { className: "dsov-planRow", key: rowKey },
+          h("button", buttonProps, ...children),
+          hasPlanIdentity
+            ? h(
+                "button",
+                {
+                  type: "button",
+                  className: "dsov-planRowAction",
+                  title: t("planWorkbench.open"),
+                  "aria-label": t("planWorkbench.open"),
+                  onClick: (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setPlanMenu({ x: event.clientX, y: event.clientY, artifact, sessionId });
+                  },
+                },
+                h(IconPlan, { size: 14 })
+              )
+            : null
         );
       });
       if (fileMenu !== null) rows.push(h(ArtifactFileMenu, { key: "dsov-file-menu", menu: fileMenu, t, onClose: () => setFileMenu(null) }));
+      if (planMenu !== null) rows.push(h(PlanRowMenu, { key: "dsov-plan-menu", menu: planMenu, t, onClose: () => setPlanMenu(null) }));
       return h(
         Section,
         {
@@ -6649,7 +7089,8 @@ function FileTypeIcon(props) {
                 t("stats.errors", { n: errors })
               ),
               err.open && err.pos !== null && failed.length > 0
-                ? h(
+                ? renderOverlay(
+                    h(
                     "div",
                     { className: "dsov-errPop", style: { top: `${err.pos.top}px`, right: `${err.pos.right}px` } },
                     h(
@@ -6680,6 +7121,7 @@ function FileTypeIcon(props) {
                         )
                       )
                   )
+                )
                 : null
             )
           : null,
@@ -6710,7 +7152,8 @@ function FileTypeIcon(props) {
                 h(IconChevron, { size: 10, className: "dsov-moreChevron" })
               ),
               more.open && more.pos !== null
-                ? h(
+                ? renderOverlay(
+                    h(
                     "div",
                     { className: "dsov-morePop", style: { top: `${more.pos.top}px`, right: `${more.pos.right}px` }, role: "dialog", "aria-label": moreHead },
                     h(
@@ -6732,6 +7175,7 @@ function FileTypeIcon(props) {
                           )
                     )
                   )
+                )
                 : null
             )
           : null
@@ -7338,7 +7782,18 @@ function FileTypeIcon(props) {
             )
           : null,
         introBanner !== null ? h("div", { className: "dsov-turnStart", key: `turnStart-${introSeq}` }, h("span", { className: "dsov-turnStartDot" }), t("intro.newTurn", { n: introBanner })) : null,
-        cfg.showProgress ? h(ProgressSection, { summary, goal, t, waiting: sessionWaiting && asOf === null, cfg, asOf, introSeq }) : null,
+        cfg.showProgress
+          ? h(ProgressSection, {
+              summary,
+              goal,
+              t,
+              waiting: sessionWaiting && asOf === null,
+              running: sessionRunning && asOf === null,
+              cfg,
+              asOf,
+              introSeq,
+            })
+          : null,
         cfg.showArtifacts ? h(ArtifactsSection, { summary, t, binding, stats, asOf, introSeq }) : null,
         cfg.showReferences ? h(ReferencesSection, { summary, t, sessionId, asOf, introSeq }) : null
       );
@@ -8161,18 +8616,18 @@ function FileTypeIcon(props) {
 
     const CSS = `
 .dsov-view{box-sizing:border-box;width:100%;max-width:880px;margin:0 auto;padding:20px 28px 64px;display:flex;flex-direction:column;gap:14px}
-.dsov-panel{box-sizing:border-box;height:100%;min-height:0;overflow-y:auto;padding:14px 16px 28px;display:flex;flex-direction:column;gap:12px}
-.dsov-panel,.dsov-viking,.dsov-secBody,.dsov-typeMenu,.dsov-md-pre,.dsov-turnbarScroll,.dsov-toolbarScroll{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--dsw-alias-label-secondary) 35%,transparent) transparent}
-.dsov-panel::-webkit-scrollbar,.dsov-viking::-webkit-scrollbar,.dsov-secBody::-webkit-scrollbar,.dsov-typeMenu::-webkit-scrollbar,.dsov-md-pre::-webkit-scrollbar,.dsov-turnbarScroll::-webkit-scrollbar,.dsov-toolbarScroll::-webkit-scrollbar{width:6px;height:5px}
-.dsov-panel::-webkit-scrollbar-thumb,.dsov-viking::-webkit-scrollbar-thumb,.dsov-secBody::-webkit-scrollbar-thumb,.dsov-typeMenu::-webkit-scrollbar-thumb,.dsov-md-pre::-webkit-scrollbar-thumb,.dsov-turnbarScroll::-webkit-scrollbar-thumb,.dsov-toolbarScroll::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--dsw-alias-label-secondary) 35%,transparent);border-radius:3px}
-.dsov-panel::-webkit-scrollbar-track,.dsov-viking::-webkit-scrollbar-track,.dsov-secBody::-webkit-scrollbar-track,.dsov-typeMenu::-webkit-scrollbar-track,.dsov-md-pre::-webkit-scrollbar-track,.dsov-turnbarScroll::-webkit-scrollbar-track,.dsov-toolbarScroll::-webkit-scrollbar-track{background:transparent}
+.dsov-panel{box-sizing:border-box;height:100%;min-height:0;overflow-y:auto;scrollbar-gutter:stable;padding:14px 16px 28px;display:flex;flex-direction:column;gap:12px}
+.dsov-panel,.dsov-viking,.dsov-secBody,.dsov-planWbBody,.dsov-typeMenu,.dsov-md-pre,.dsov-turnbarScroll,.dsov-toolbarScroll{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--dsw-alias-label-secondary) 35%,transparent) transparent}
+.dsov-panel::-webkit-scrollbar,.dsov-viking::-webkit-scrollbar,.dsov-secBody::-webkit-scrollbar,.dsov-planWbBody::-webkit-scrollbar,.dsov-typeMenu::-webkit-scrollbar,.dsov-md-pre::-webkit-scrollbar,.dsov-turnbarScroll::-webkit-scrollbar,.dsov-toolbarScroll::-webkit-scrollbar{width:6px;height:5px}
+.dsov-panel::-webkit-scrollbar-thumb,.dsov-viking::-webkit-scrollbar-thumb,.dsov-secBody::-webkit-scrollbar-thumb,.dsov-planWbBody::-webkit-scrollbar-thumb,.dsov-typeMenu::-webkit-scrollbar-thumb,.dsov-md-pre::-webkit-scrollbar-thumb,.dsov-turnbarScroll::-webkit-scrollbar-thumb,.dsov-toolbarScroll::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--dsw-alias-label-secondary) 35%,transparent);border-radius:3px}
+.dsov-panel::-webkit-scrollbar-track,.dsov-viking::-webkit-scrollbar-track,.dsov-secBody::-webkit-scrollbar-track,.dsov-planWbBody::-webkit-scrollbar-track,.dsov-typeMenu::-webkit-scrollbar-track,.dsov-md-pre::-webkit-scrollbar-track,.dsov-turnbarScroll::-webkit-scrollbar-track,.dsov-toolbarScroll::-webkit-scrollbar-track{background:transparent}
 .dsov-toolbar{display:flex;align-items:center;gap:8px}
 .dsov-toolbarScroll{flex:1 1 auto;min-width:0;display:flex;align-items:center;overflow-x:auto;overflow-y:hidden;padding-bottom:5px}
 .dsov-toolbarFixed{flex:none;display:flex;align-items:center;gap:8px;margin-left:auto;padding-bottom:5px}
 .dsov-iconBtn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:8px;border:.5px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap;flex:none}
 .dsov-turnSelect{flex:none}
 .dsov-iconBtn:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,transparent);color:var(--dsw-alias-label-primary)}
-.dsov-section{background:var(--dsw-alias-bg-layer-1);border:.5px solid var(--dsw-alias-border-l1);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.dsov-section{position:relative;background:var(--dsw-alias-bg-layer-1);border:.5px solid var(--dsw-alias-border-l1);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .dsov-sectionHead{display:flex;align-items:center;gap:6px}
 .dsov-sectionToggle{flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:transparent;border:none;margin:0;padding:2px 4px;border-radius:8px;font:inherit;color:inherit;text-align:left;cursor:pointer}
 .dsov-sectionToggle:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent)}
@@ -8180,6 +8635,7 @@ function FileTypeIcon(props) {
 .dsov-chevron[data-open=true]{transform:rotate(90deg)}
 .dsov-moreSteps{appearance:none;background:transparent;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:auto;padding:1px 6px;border-radius:8px;font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
 .dsov-moreSteps:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dsov-moreSteps:focus-visible{outline:1.5px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dsov-moreIcon{flex:none;display:inline-flex;opacity:.75}
 .dsov-sectionIcon{flex:none;display:inline-flex;color:var(--dsw-alias-label-secondary)}
 .dsov-sectionTitle{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);white-space:nowrap}
@@ -8187,10 +8643,14 @@ function FileTypeIcon(props) {
 .dsov-headAction{flex:none;display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:8px;border:.5px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
 .dsov-headAction:hover{color:var(--dsw-alias-brand-primary);border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 45%,transparent);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 8%,transparent)}
 .dsov-empty{font-size:12.5px;line-height:1.6;color:var(--dsw-alias-label-secondary);padding:4px 2px}
-.dsov-secBody{max-height:320px;overflow-y:auto;overflow-x:hidden;margin:0 -12px 0 -8px;padding:0 12px 0 8px}
+.dsov-secBody{max-height:320px;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;margin:0 -12px 0 -8px;padding:0 12px 0 8px}
 .dsov-section[data-full=true] .dsov-secBody{max-height:none;overflow:visible;margin:0;padding:0}
+.dsov-section[data-body=auto] .dsov-secBody{max-height:none;overflow:visible}
+.dsov-section[data-body=auto] .dsov-live{position:relative;top:0}
+.dsov-section[data-body=fixed] .dsov-secBody{height:320px;max-height:320px;overflow-y:auto}
+.dsov-section[data-full=true][data-body=fixed] .dsov-secBody{height:auto;max-height:none;overflow:visible}
 .dsov-loading{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--dsw-alias-label-secondary)}
-.dsov-goal{display:flex;flex-direction:column;gap:3px;box-sizing:border-box;border:.5px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 32%,transparent);border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 6%,transparent);padding:7px 9px 8px;color:var(--dsw-alias-label-primary)}
+.dsov-goal{display:flex;flex-direction:column;gap:3px;margin:0 0 6px;box-sizing:border-box;border:.5px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 32%,transparent);border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 6%,transparent);padding:7px 9px 8px;color:var(--dsw-alias-label-primary)}
 .dsov-goal[data-phase=paused]{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff9f0a) 40%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff9f0a) 7%,transparent)}
 .dsov-goal[data-phase=blocked]{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary,#ff453a) 40%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#ff453a) 7%,transparent)}
 .dsov-goal[data-phase=complete]{border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary,#2ea36a) 40%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-success-primary,#2ea36a) 7%,transparent)}
@@ -8219,10 +8679,6 @@ function FileTypeIcon(props) {
 .dsov-badge[data-tone=warn]{color:var(--dsw-alias-state-warn-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 45%,transparent)}
 .dsov-badge[data-tone=error]{color:var(--dsw-alias-state-error-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,transparent)}
 .dsov-badge[data-tone=quiet]{border-color:transparent;background:var(--dsw-alias-bg-layer-2)}
-.dsov-progress{display:flex;flex-direction:column;gap:6px;margin-top:2px}
-.dsov-progressTrack{height:4px;border-radius:2px;background:var(--dsw-alias-bg-layer-2);overflow:hidden}
-.dsov-progressFill{height:100%;border-radius:2px;background:var(--dsw-alias-state-success-primary);transition:width .25s ease}
-.dsov-progressMeta{font-size:11.5px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}
 .dsov-todo{display:flex;align-items:flex-start;gap:8px;font-size:13px;line-height:1.55;color:var(--dsw-alias-label-primary);padding:4px 6px;border-radius:8px;cursor:pointer;transition:background-color .18s ease,color .18s ease}
 .dsov-todo+.dsov-todo{margin-top:3px}
 .dsov-todo:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent)}
@@ -8236,7 +8692,9 @@ function FileTypeIcon(props) {
 .dsov-todoText{flex:1;min-width:0;overflow-wrap:anywhere}
 .dsov-todo[data-status=completed] .dsov-todoText{color:var(--dsw-alias-label-secondary)}
 .dsov-todoStatus{flex:none;font-size:11px;line-height:20px;color:var(--dsw-alias-label-secondary)}
-.dsov-stepsHead{display:flex;align-items:center;gap:8px;font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));letter-spacing:.02em;padding:1px 2px 4px}
+.dsov-stepsHead{display:flex;align-items:center;gap:8px;font-size:10.5px;line-height:16px;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));letter-spacing:.02em;padding:2px 2px 6px}
+.dsov-stepsHeadLabel{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsov-stepsFoot{display:flex;justify-content:flex-end;padding:4px 2px 0}
 .dsov-steps{position:relative;display:flex;flex-direction:column;gap:3px}
 .dsov-step{display:flex;align-items:center;gap:6px;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-primary);padding:3px 6px;min-width:0;border-radius:8px;cursor:pointer;transition:background-color .18s ease}
 .dsov-step:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 5%,transparent)}
@@ -8433,7 +8891,8 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 .dsov-fileMenuErr{padding:5px 8px;font-size:11px;color:var(--dsw-alias-state-error-primary,#ff453a)}
 .dsov-statWrap{position:relative;display:inline-flex}
 .dsov-statBtn[disabled]{cursor:default}
-.dsov-errPop{position:fixed;z-index:80;width:min(360px,78vw);max-height:280px;overflow-y:auto;padding:4px;border-radius:8px;background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l1);box-shadow:0 8px 22px rgba(0,0,0,.20)}
+.dsov-overlayHost{position:fixed;top:0;left:0;width:0;height:0;z-index:80;pointer-events:none}
+.dsov-errPop{position:fixed;z-index:80;pointer-events:auto;width:min(360px,78vw);max-height:280px;overflow-y:auto;padding:4px;border-radius:8px;background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l1);box-shadow:0 8px 22px rgba(0,0,0,.20)}
 .dsov-errPopHead{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:2px 4px 4px;font-size:11px;color:var(--dsw-alias-label-secondary)}
 .dsov-errPopHint{margin-left:6px;font-size:10px;color:var(--dsw-alias-label-tertiary)}
 .dsov-errPopClose{border:0;background:none;cursor:pointer;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1;padding:2px 5px;border-radius:4px}
@@ -8448,7 +8907,7 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 .dsov-moreBtn{display:inline-flex;align-items:center;gap:3px}
 .dsov-moreChevron{flex:none;opacity:.7;transition:transform .15s ease}
 .dsov-moreBtn[data-active=true] .dsov-moreChevron{transform:rotate(180deg)}
-.dsov-morePop{position:fixed;z-index:80;width:min(300px,82vw);max-height:min(72vh,430px);overflow-y:auto;padding:7px 9px 8px;border-radius:10px;background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l1);box-shadow:0 8px 22px rgba(0,0,0,.20);color:var(--dsw-alias-label-primary);font-size:11.5px;line-height:1.5}
+.dsov-morePop{position:fixed;z-index:80;pointer-events:auto;width:min(300px,82vw);max-height:min(72vh,430px);overflow-y:auto;padding:7px 9px 8px;border-radius:10px;background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l1);box-shadow:0 8px 22px rgba(0,0,0,.20);color:var(--dsw-alias-label-primary);font-size:11.5px;line-height:1.5}
 .dsov-moreHead{display:flex;align-items:center;gap:8px;padding:1px 1px 3px}
 .dsov-moreTitle{flex:none;font-weight:600;font-size:12px;color:var(--dsw-alias-label-primary)}
 .dsov-moreSub{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -8509,15 +8968,68 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 .dsov-turnSelect:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3,var(--dsw-alias-border-l2))}
 @keyframes dsov-spin{to{transform:rotate(360deg)}}
 @keyframes dsov-pulse{0%,100%{opacity:1}50%{opacity:.3}}
-@keyframes dsov-stepIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-@keyframes dsov-stepOut{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-6px)}}
+@keyframes dsov-stepIn{0%{opacity:0;transform:translateY(14px) scale(.97);filter:blur(1.5px)}60%{opacity:1;filter:blur(0)}100%{opacity:1;transform:none;filter:blur(0)}}
+@keyframes dsov-stepOut{0%{opacity:1;transform:none;filter:blur(0)}100%{opacity:0;transform:translateY(-16px) scale(.96);filter:blur(2px)}}
 @keyframes dsov-refIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@keyframes dsov-liveSweep{0%{transform:translateX(-120%)}55%,100%{transform:translateX(120%)}}
+@keyframes dsov-liveHalo{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 45%,transparent)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@keyframes dsov-liveBar{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
+@keyframes dsov-liveRim{0%,100%{opacity:0}35%{opacity:.55}65%{opacity:.22}}
+@keyframes dsov-stepScan{0%{background-position:180% 0}100%{background-position:-80% 0}}
+@keyframes dsov-stepRailPulse{0%,100%{opacity:.4}50%{opacity:1}}
+@keyframes dsov-stepsNudgeA{0%{transform:translateY(5px)}55%{transform:translateY(-2px)}100%{transform:none}}
+@keyframes dsov-stepsNudgeB{0%{transform:translateY(5px)}55%{transform:translateY(-2px)}100%{transform:none}}
+@keyframes dsov-stepHit{0%{background:color-mix(in srgb,var(--dsw-alias-state-success-primary,#2ea36a) 22%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--dsw-alias-state-success-primary,#2ea36a) 75%,transparent),0 0 14px color-mix(in srgb,var(--dsw-alias-state-success-primary,#2ea36a) 40%,transparent)}100%{background:transparent;box-shadow:0 0 0 0 transparent}}
+@keyframes dsov-hitPop{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
 .dsov-row[data-enter=true]{animation:dsov-refIn .32s ease both}
-.dsov-step[data-enter=true]{animation:dsov-stepIn .34s ease both}
-.dsov-step[data-exit=true]{position:absolute;top:0;left:0;right:0;animation:dsov-stepOut .4s ease both;pointer-events:none}
+.dsov-step[data-enter=true]{animation:dsov-stepIn .42s cubic-bezier(.22,.61,.36,1) both}
+.dsov-step[data-exit=true]{position:absolute;top:0;left:0;right:0;animation:dsov-stepOut .5s cubic-bezier(.22,.61,.36,1) both;pointer-events:none;z-index:1}
+.dsov-steps[data-nudge=odd]{animation:dsov-stepsNudgeA .34s cubic-bezier(.22,.61,.36,1)}
+.dsov-steps[data-nudge=even]{animation:dsov-stepsNudgeB .34s cubic-bezier(.22,.61,.36,1)}
+.dsov-step[data-active=true]{position:relative;isolation:isolate;background:color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 9%,transparent)}
+.dsov-step[data-active=true]::before{content:"";position:absolute;top:3px;bottom:3px;left:1px;width:2px;border-radius:1px;background:var(--dsw-alias-brand-primary,#247bbf);animation:dsov-stepRailPulse 1.8s ease-in-out infinite;pointer-events:none}
+.dsov-step[data-active=true]:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 13%,transparent)}
+.dsov-step[data-active=true]::after{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;background:linear-gradient(95deg,color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 20%,transparent),transparent 55%);background-size:220% 100%;animation:dsov-stepScan 2.2s linear infinite;pointer-events:none}
+.dsov-step[data-active=true] .dsov-stepName{font-weight:600;color:var(--dsw-alias-brand-primary,#247bbf)}
+.dsov-step[data-hit=true]{animation:dsov-stepHit .8s ease-out}
+.dsov-step[data-hit=true] .dsov-todoIcon{animation:dsov-hitPop .45s cubic-bezier(.2,1.6,.4,1)}
+.dsov-live{position:sticky;top:-1px;z-index:3;isolation:isolate;display:flex;align-items:center;gap:8px;min-width:0;box-sizing:border-box;margin:0 0 6px;padding:6px 9px;border-radius:10px;border:.5px solid color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 42%,transparent);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 7%,var(--dsw-alias-bg-layer-1));color:var(--dsw-alias-label-primary);font-size:11.5px;line-height:1.5;overflow:hidden}
+.dsov-live::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(100deg,transparent 0%,color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 22%,transparent) 45%,transparent 70%);transform:translateX(-120%);animation:dsov-liveSweep 2.4s ease-in-out infinite;pointer-events:none}
+.dsov-section[data-full=true] .dsov-live{position:relative;top:0}
+.dsov-live[data-state=waiting]{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff9f0a) 48%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff9f0a) 9%,var(--dsw-alias-bg-layer-1))}
+.dsov-live[data-state=waiting]::before{background:linear-gradient(100deg,transparent 0%,color-mix(in srgb,var(--dsw-alias-state-warn-primary,#ff9f0a) 22%,transparent) 45%,transparent 70%);animation:none;transform:translateX(-120%)}
+.dsov-livePulse{position:relative;flex:none;display:inline-flex;align-items:center;justify-content:center;width:8px;height:8px}
+.dsov-liveDot{width:8px;height:8px;border-radius:50%;background:var(--dsw-alias-brand-primary,#247bbf);animation:dsov-liveHalo 1.6s ease-out infinite}
+.dsov-live[data-state=waiting] .dsov-liveDot{background:var(--dsw-alias-state-warn-primary,#ff9f0a);animation-duration:2.6s}
+.dsov-liveText{display:flex;align-items:baseline;gap:7px;min-width:0;flex:1}
+.dsov-liveLabel{flex:none;font-weight:600;color:var(--dsw-alias-brand-primary,#247bbf);letter-spacing:.02em}
+.dsov-live[data-state=waiting] .dsov-liveLabel{color:var(--dsw-alias-state-warn-primary,#ff9f0a)}
+.dsov-liveNow{min-width:0;color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+.dsov-liveBars{flex:none;display:inline-flex;align-items:flex-end;gap:1.5px;height:12px}
+.dsov-liveBars i{width:2.5px;height:100%;border-radius:1px;background:var(--dsw-alias-brand-primary,#247bbf);transform-origin:bottom;animation:dsov-liveBar 1s ease-in-out infinite}
+.dsov-liveBars i:nth-child(2){animation-delay:.12s}
+.dsov-liveBars i:nth-child(3){animation-delay:.24s}
+.dsov-liveBars i:nth-child(4){animation-delay:.36s}
+.dsov-liveBars i:nth-child(5){animation-delay:.48s}
+.dsov-live[data-state=waiting] .dsov-liveBars i{background:var(--dsw-alias-state-warn-primary,#ff9f0a);animation:none;transform:scaleY(.42);opacity:.55}
+.dsov-liveClock{flex:none;font-size:10.5px;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));font-variant-numeric:tabular-nums;padding-left:7px;border-left:.5px solid color-mix(in srgb,var(--dsw-alias-label-primary) 12%,transparent)}
+.dsov-liveMeter{flex:none;display:inline-flex;align-items:center;gap:5px;min-width:0}
+.dsov-liveMeterTrack{flex:none;width:44px;height:5px;border-radius:3px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 12%,transparent);overflow:hidden}
+.dsov-liveMeterFill{display:block;height:100%;border-radius:3px;background:var(--dsw-alias-brand-primary,#247bbf);transition:width .3s ease}
+.dsov-live[data-state=waiting] .dsov-liveMeterFill{background:var(--dsw-alias-state-warn-primary,#ff9f0a)}
+.dsov-live[data-state=summary] .dsov-liveMeterFill{background:var(--dsw-alias-state-success-primary,#2ea36a)}
+.dsov-liveMeterCount{flex:none;font-size:10.5px;line-height:1;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));font-variant-numeric:tabular-nums}
+.dsov-live[data-state=summary]{border-color:var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}
+.dsov-live[data-state=summary]::before{display:none}
+.dsov-live[data-state=summary] .dsov-liveDot{background:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));animation:none}
+.dsov-live[data-state=summary][data-complete=true] .dsov-liveDot{background:var(--dsw-alias-state-success-primary,#2ea36a)}
+.dsov-live[data-state=summary] .dsov-liveLabel{color:var(--dsw-alias-label-secondary);font-weight:600}
+.dsov-live[data-state=summary] .dsov-liveNow{color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary))}
+.dsov-section[data-live=true]::after{content:"";position:absolute;inset:-1px;border-radius:13px;border:1px solid color-mix(in srgb,var(--dsw-alias-brand-primary,#247bbf) 55%,transparent);opacity:0;pointer-events:none;animation:dsov-liveRim 2.6s ease-in-out infinite}
+.dsov-section[data-live=true] .dsov-sectionIcon{animation:dsov-pulse 2s ease-in-out infinite}
 .dsov-todoSpin{transform-origin:7.5px 7.5px;animation:dsov-spin 1.1s linear infinite}
 .dsov-todoPulse{animation:dsov-pulse 1.4s ease-in-out infinite}
-@media (prefers-reduced-motion: reduce){.dsov-todoSpin,.dsov-todoPulse,.dsov-step[data-enter=true],.dsov-row[data-enter=true],.dsov-section[data-intro],.dsov-turnStart{animation:none}.dsov-step[data-exit=true]{animation:none;opacity:0}}
+@media (prefers-reduced-motion: reduce){.dsov-todoSpin,.dsov-todoPulse,.dsov-step[data-enter=true],.dsov-row[data-enter=true],.dsov-section[data-intro],.dsov-turnStart{animation:none}.dsov-step[data-exit=true]{animation:none;opacity:0}.dsov-live::before,.dsov-liveDot,.dsov-liveBars i,.dsov-step[data-active=true],.dsov-step[data-active=true]::before,.dsov-step[data-active=true]::after,.dsov-steps[data-nudge],.dsov-step[data-hit=true],.dsov-step[data-hit=true] .dsov-todoIcon,.dsov-section[data-live=true]::after,.dsov-section[data-live=true] .dsov-sectionIcon{animation:none}.dsov-liveMeterFill{transition:none}}
 .dsov-vikingMode{align-self:flex-start;margin-left:auto}
 .dsov-seg{flex:none;display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
 .dsov-segBtn{border:none;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;line-height:18px;padding:0 8px;border-radius:6px;cursor:pointer;white-space:nowrap}
@@ -8569,7 +9081,934 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
 .dsov-ft-ppt{--dsh-file-type-default-color:var(--dsw-static-amber-500)}
 .dsov-ft-video{--dsh-file-type-default-color:var(--dsh-file-type-violet)}
 .dsov-ft-word{--dsh-file-type-default-color:var(--dsw-static-deepseek-450)}
+.dsov-planActionWrap{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dsov-planActionHost{display:flex;align-items:center;gap:6px;min-width:0}
+.dsov-planAction{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;border:.5px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;cursor:pointer}
+.dsov-planAction:hover{background:var(--dsw-alias-bg-layer-2)}
+.dsov-planActionError{font-size:11.5px;color:var(--dsw-alias-state-error-primary)}
+.dsov-planRow{position:relative;display:flex;align-items:center;margin:0 -8px}
+.dsov-planRow .dsov-row{flex:1;min-width:0;margin:0}
+.dsov-planRowAction{position:absolute;right:0;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:7px;border:.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1,var(--dsw-alias-bg-layer-2));color:var(--dsw-alias-label-secondary);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;opacity:0;transition:opacity .12s ease;z-index:1}
+.dsov-planRow:hover .dsov-planRowAction,.dsov-planRow:focus-within .dsov-planRowAction{opacity:1}
+.dsov-planRow:hover .dsov-rowTail{visibility:hidden}
+.dsov-planWb{box-sizing:border-box;height:100%;min-height:0;overflow:hidden;padding:0 16px;display:flex;flex-direction:column;font-size:13px}
+.dsov-planWbHead{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:14px 0 10px;border-bottom:.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1)}
+.dsov-planWbTitle{font-size:13.5px;font-weight:600;color:var(--dsw-alias-label-primary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.dsov-planWbState{font-size:11px;line-height:18px;padding:0 7px;border-radius:999px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);white-space:nowrap;flex:none}
+.dsov-planWbState[data-tone=live]{color:var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 12%,transparent)}
+.dsov-planWbModes{display:inline-flex;flex:none;padding:2px;gap:2px;border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
+.dsov-planWbMode{border:none;background:transparent;cursor:pointer;font:inherit;font-size:12px;line-height:20px;padding:0 9px;border-radius:6px;color:var(--dsw-alias-label-secondary)}
+.dsov-planWbMode[data-active=true]{background:var(--dsw-alias-bg-layer-1,var(--dsw-alias-bg-layer-2));color:var(--dsw-alias-label-primary);font-weight:600}
+.dsov-planWbBody{flex:1;min-height:0;overflow-y:auto;scrollbar-gutter:stable;padding:2px 0 12px}
+.dsov-planWbSections{display:flex;flex-direction:column;gap:2px;padding:6px 0 10px}
+.dsov-planWbSection{position:relative;padding:4px 30px 4px 0;border-radius:8px}
+.dsov-planWbSection:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 4%,transparent)}
+.dsov-planWbSectionBody{min-width:0;overflow-wrap:anywhere}
+.dsov-planWbWhole{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-secondary);border-bottom:.5px dashed var(--dsw-alias-border-l2);padding-bottom:2px;margin:2px 0 6px}
+.dsov-planWbAdd{position:absolute;top:6px;right:2px;width:22px;height:22px;border-radius:6px;border:.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1,transparent);color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:14px;line-height:1;display:inline-flex;align-items:center;justify-content:center;opacity:0;transition:opacity .12s ease}
+.dsov-planWbSection:hover .dsov-planWbAdd,.dsov-planWbSection:focus-within .dsov-planWbAdd{opacity:1}
+.dsov-planWbNote{margin:6px 0 4px 12px;padding:6px 10px;border-left:2px solid var(--dsw-alias-brand-primary);border-radius:0 8px 8px 0;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 6%,transparent)}
+.dsov-planWbNoteHead{display:flex;align-items:flex-start;gap:6px}
+.dsov-planWbNoteQuote{flex:1;min-width:0;font-size:11.5px;color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsov-planWbNoteDel{flex:none;border:none;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:13px;line-height:16px;padding:0 2px;border-radius:4px}
+.dsov-planWbNoteDel:hover{color:var(--dsw-alias-state-error-primary);background:var(--dsw-alias-bg-layer-2)}
+.dsov-planWbNoteText{font-size:12.5px;line-height:1.55;color:var(--dsw-alias-label-primary);white-space:pre-wrap;overflow-wrap:anywhere;margin-top:2px}
+.dsov-planWbEditor{margin:6px 0 6px 12px;display:flex;flex-direction:column;gap:6px}
+.dsov-planWbTextarea,.dsov-planWbEditText{width:100%;box-sizing:border-box;resize:vertical;border:.5px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-1,transparent);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:1.55;padding:7px 9px;outline:none}
+.dsov-planWbTextarea:focus,.dsov-planWbEditText:focus{border-color:var(--dsw-alias-brand-primary)}
+.dsov-planWbEdit{display:flex;flex-direction:column;gap:8px;padding:8px 0}
+.dsov-planWbEditText{min-height:52vh;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+.dsov-planWbEditorFoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dsov-planWbHint{flex:1;min-width:120px;font-size:11.5px;color:var(--dsw-alias-label-secondary)}
+.dsov-planWbPrimary{flex:none;border:none;border-radius:8px;padding:0 12px;height:28px;font:inherit;font-size:12.5px;cursor:pointer;background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-onbrand,#fff)}
+.dsov-planWbPrimary:disabled{opacity:.5;cursor:default}
+.dsov-planWbGhost{flex:none;border:.5px solid var(--dsw-alias-border-l1);border-radius:8px;padding:0 10px;height:28px;font:inherit;font-size:12.5px;cursor:pointer;background:transparent;color:var(--dsw-alias-label-secondary)}
+.dsov-planWbGhost:disabled{opacity:.5;cursor:default}
+.dsov-planWbFoot{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 0 14px;border-top:.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1)}
+.dsov-planWbCount{font-size:12px;color:var(--dsw-alias-label-secondary);flex:none}
+.dsov-planWbErr{flex:1;min-width:120px;font-size:12px;color:var(--dsw-alias-state-error-primary);overflow-wrap:anywhere}
+.dsov-planWbNotice{flex:1;min-width:120px;font-size:12px;color:var(--dsw-alias-state-success-primary)}
+.dsov-planWbUnavailable{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;align-items:flex-start;gap:10px;font-size:13px;color:var(--dsw-alias-label-secondary);padding:14px 2px}
 `;
+
+    /* ------------------------------------------------------------------ */
+    /* Plan workbench (extractable)                                        */
+    /*                                                                    */
+    /* Review-card annotation + revision for plan-mode plans. This whole  */
+    /* region reaches the rest of the module only through planTitleOf,     */
+    /* rememberContextPreview / readContextPreview, MarkdownBody,          */
+    /* ChatMarkdown, insertIntoComposer, openNativePlan and translate, so  */
+    /* it can be lifted into its own plugin without touching anything      */
+    /* else. DocumentWorkbench (render/annotate/rewrite) stays free of     */
+    /* plan-mode knowledge; the delivery helpers below are the plan half.  */
+    /* ------------------------------------------------------------------ */
+
+    const PLAN_TAB_ID = "dsh-conversation-overview/plan";
+    const PLAN_TAB_KIND = "overview-plan";
+    const PLAN_REVIEW_ACTION_ID = "dsh-conversation-overview/plan-review";
+    const PLAN_ADDRESS_PREFIX = "dsh-resource://overview-plan/";
+    const PLAN_WB_REF_PREFIX = "planwb|";
+    /* a resource address no protocol claims: the body then keeps to its snapshot */
+    const PLAN_NO_RESOURCE = "sidebar://no-plan-resource";
+    const PLAN_ANNOTATION_STORE_KEY = "dsh.conversationOverview.planAnnotations.v1";
+    const PLAN_ANNOTATION_STORE_VERSION = 1;
+    const PLAN_ANNOTATION_PLANS_LIMIT = 40;
+    const PLAN_ANNOTATION_PER_PLAN_LIMIT = 50;
+    const PLAN_COMMENT_LIMIT = 4000;
+    const PLAN_EDIT_TEXT_LIMIT = 40000;
+    const PLAN_SECTION_QUOTE_LIMIT = 200;
+    /* sectionIndex used by an opinion on the whole plan */
+    const PLAN_WHOLE = -1;
+
+    /** Resource address of one logged plan; mirrors the plan plugin's own scheme. */
+    function planResourceAddress(sessionId, callId) {
+      if (typeof sessionId !== "string" || sessionId === "" || typeof callId !== "string" || callId === "") return undefined;
+      let segments;
+      try {
+        const sessions = runtime && runtime.ctx ? runtime.ctx.sessions : undefined;
+        const child = sessions !== undefined && sessions !== null && typeof sessions.subagentAddress === "function" ? sessions.subagentAddress(sessionId) : undefined;
+        segments = child === undefined || child === null ? [sessionId, callId] : ["subagent", child.parentSessionId, child.childSessionId, child.mode, callId];
+      } catch {
+        segments = [sessionId, callId]; /* uninjected ctx access throws; plain sessions are the common case */
+      }
+      return `dsh-resource://plan/${segments.map(encodeURIComponent).join("/")}`;
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* Identity + address                                               */
+    /* ---------------------------------------------------------------- */
+
+    /** Stable per-plan identity: the logged call id wins, then the review request, then the snapshot. */
+    function planWorkbenchIdentity(callId, requestKey, previewKey) {
+      if (typeof callId === "string" && callId !== "") return `call:${callId}`;
+      if (typeof requestKey === "string" && requestKey !== "") return `review:${requestKey}`;
+      if (typeof previewKey === "string" && previewKey !== "") return `artifact:${previewKey}`;
+      return undefined;
+    }
+
+    function planWorkbenchKey(sessionId, identity) {
+      return `${sessionId}|${PLAN_WB_REF_PREFIX}${identity}`;
+    }
+
+    function parsePlanWorkbenchKey(key) {
+      if (typeof key !== "string") return undefined;
+      const separator = key.indexOf("|");
+      if (separator <= 0) return undefined;
+      const sessionId = key.slice(0, separator);
+      const rest = key.slice(separator + 1);
+      if (!rest.startsWith(PLAN_WB_REF_PREFIX)) return undefined;
+      const identity = rest.slice(PLAN_WB_REF_PREFIX.length);
+      const colon = identity.indexOf(":");
+      if (colon <= 0) return undefined;
+      const kind = identity.slice(0, colon);
+      const id = identity.slice(colon + 1);
+      if (id === "" || (kind !== "call" && kind !== "review" && kind !== "artifact")) return undefined;
+      return { sessionId, kind, id };
+    }
+
+    function planWorkbenchAddress(key) {
+      return `${PLAN_ADDRESS_PREFIX}${encodeURIComponent(key)}`;
+    }
+
+    function parsePlanWorkbenchAddress(address) {
+      if (typeof address !== "string" || !address.startsWith(PLAN_ADDRESS_PREFIX)) return undefined;
+      try {
+        const key = decodeURIComponent(address.slice(PLAN_ADDRESS_PREFIX.length));
+        return key === "" ? undefined : key;
+      } catch {
+        return undefined;
+      }
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* Sectioning                                                       */
+    /* ---------------------------------------------------------------- */
+
+    /** Split a plan into heading-anchored sections; fences never open a section. */
+    function planSections(text) {
+      const source = typeof text === "string" ? text : "";
+      const lines = source.split("\n");
+      const sections = [];
+      let start = 0;
+      let level = 0;
+      let heading = "";
+      let fence = null;
+      const push = (endLine) => {
+        const body = lines.slice(start, endLine + 1).join("\n").replace(/^\s*\n+/, "").replace(/\n+\s*$/, "");
+        if (body.trim() === "") return;
+        const section = { index: sections.length, level, heading, startLine: start, endLine };
+        section.text = body;
+        section.quote = planSectionQuote(section);
+        sections.push(section);
+      };
+      for (let index = 0; index < lines.length; index += 1) {
+        const trimmed = lines[index].trim();
+        if (fence !== null) {
+          if (trimmed.startsWith(fence)) fence = null;
+          continue;
+        }
+        if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+          fence = trimmed.slice(0, 3);
+          continue;
+        }
+        const match = /^(#{1,6})[ \t]+(.*)$/.exec(trimmed);
+        if (match === null) continue;
+        push(index - 1);
+        start = index;
+        level = match[1].length;
+        heading = match[2].replace(/[#*`]/g, "").trim().slice(0, 120);
+      }
+      push(lines.length - 1);
+      return sections;
+    }
+
+    /** First body line of a section, collapsed for the feedback message and note cards. */
+    function planSectionQuote(section) {
+      if (!isRecord(section)) return "";
+      const heading = typeof section.heading === "string" ? section.heading : "";
+      const lines = (typeof section.text === "string" ? section.text : "").split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed === "" || /^#{1,6}[ \t]+/.test(trimmed)) continue;
+        return trimmed.replace(/\s+/g, " ").slice(0, PLAN_SECTION_QUOTE_LIMIT);
+      }
+      return heading.slice(0, PLAN_SECTION_QUOTE_LIMIT);
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* Annotation storage (browser-local)                               */
+    /* ---------------------------------------------------------------- */
+
+    function emptyPlanBook() {
+      return { annotations: [], edited: "" };
+    }
+
+    function sanitizePlanBook(value) {
+      const source = isRecord(value) ? value : {};
+      const raw = Array.isArray(source.annotations) ? source.annotations : [];
+      const annotations = [];
+      for (const item of raw) {
+        if (annotations.length >= PLAN_ANNOTATION_PER_PLAN_LIMIT) break;
+        if (!isRecord(item)) continue;
+        const comment = typeof item.comment === "string" ? item.comment.trim().slice(0, PLAN_COMMENT_LIMIT) : "";
+        if (comment === "") continue;
+        annotations.push({
+          id: typeof item.id === "string" && item.id !== "" ? item.id : `a${annotations.length}`,
+          sectionIndex: Number.isSafeInteger(item.sectionIndex) ? item.sectionIndex : PLAN_WHOLE,
+          heading: typeof item.heading === "string" ? item.heading.slice(0, 120) : "",
+          quote: typeof item.quote === "string" ? item.quote.slice(0, PLAN_SECTION_QUOTE_LIMIT) : "",
+          comment,
+          createdAt: typeof item.createdAt === "number" ? item.createdAt : 0,
+        });
+      }
+      const edited = typeof source.edited === "string" ? source.edited.slice(0, PLAN_EDIT_TEXT_LIMIT) : "";
+      return { annotations, edited };
+    }
+
+    function readPlanAnnotationStore() {
+      try {
+        const raw = window.localStorage.getItem(PLAN_ANNOTATION_STORE_KEY);
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : null;
+        if (!isRecord(parsed) || !isRecord(parsed.byPlan)) return { version: PLAN_ANNOTATION_STORE_VERSION, byPlan: {} };
+        return { version: PLAN_ANNOTATION_STORE_VERSION, byPlan: parsed.byPlan };
+      } catch {
+        return { version: PLAN_ANNOTATION_STORE_VERSION, byPlan: {} };
+      }
+    }
+
+    function readPlanBook(key) {
+      if (typeof key !== "string" || key === "") return emptyPlanBook();
+      return sanitizePlanBook(readPlanAnnotationStore().byPlan[key]);
+    }
+
+    function writePlanBook(key, book) {
+      if (typeof key !== "string" || key === "") return;
+      try {
+        const store = readPlanAnnotationStore();
+        const next = sanitizePlanBook(book);
+        if (next.annotations.length === 0 && next.edited === "") delete store.byPlan[key];
+        else store.byPlan[key] = { ...next, updatedAt: Date.now() };
+        const keys = Object.keys(store.byPlan);
+        if (keys.length > PLAN_ANNOTATION_PLANS_LIMIT) {
+          keys.sort((a, b) => (Number(store.byPlan[a].updatedAt) || 0) - (Number(store.byPlan[b].updatedAt) || 0));
+          for (const stale of keys.slice(0, keys.length - PLAN_ANNOTATION_PLANS_LIMIT)) delete store.byPlan[stale];
+        }
+        window.localStorage.setItem(PLAN_ANNOTATION_STORE_KEY, JSON.stringify({ version: PLAN_ANNOTATION_STORE_VERSION, byPlan: store.byPlan }));
+      } catch {
+        /* storage full or unavailable: the in-memory book still serves this tab */
+      }
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* Feedback + delivery                                              */
+    /* ---------------------------------------------------------------- */
+
+    /** Structured revision request, or null when there is nothing to send. */
+    function buildPlanFeedback(data, translator) {
+      const t = typeof translator === "function" ? translator : translate;
+      const record = isRecord(data) ? data : {};
+      const annotations = Array.isArray(record.annotations) ? record.annotations : [];
+      const edited = typeof record.edited === "string" ? record.edited.trim() : "";
+      if (annotations.length === 0 && edited === "") return null;
+      const title = typeof record.title === "string" && record.title !== "" ? record.title : t("planWorkbench.untitled");
+      const ordered = annotations.slice().sort((a, b) => {
+        const left = a.sectionIndex === PLAN_WHOLE ? -1 : a.sectionIndex;
+        const right = b.sectionIndex === PLAN_WHOLE ? -1 : b.sectionIndex;
+        return left - right;
+      });
+      const lines = [t("planWorkbench.feedbackIntro", { title })];
+      ordered.forEach((annotation, index) => {
+        const heading = typeof annotation.heading === "string" && annotation.heading !== "" ? annotation.heading : t("planWorkbench.whole");
+        lines.push("");
+        lines.push(t("planWorkbench.feedbackHead", { n: index + 1, heading }));
+        if (typeof annotation.quote === "string" && annotation.quote !== "") lines.push(t("planWorkbench.feedbackQuote", { quote: annotation.quote }));
+        lines.push(t("planWorkbench.feedbackComment", { comment: annotation.comment }));
+      });
+      if (edited !== "") {
+        lines.push("");
+        lines.push(t("planWorkbench.feedbackEdit"));
+        lines.push("");
+        lines.push(edited);
+      }
+      lines.push("");
+      lines.push(t("planWorkbench.feedbackOutro"));
+      return lines.join("\n");
+    }
+
+    /** The live plan-review interaction this workbench may answer, or null. */
+    function findLivePlanReview(pending, key, text) {
+      if (!isRecord(pending) || pending.kind !== "plan-review" || typeof pending.answer !== "function") return null;
+      try {
+        const snapshot = typeof pending.snapshot === "function" ? pending.snapshot() : null;
+        if (isRecord(snapshot) && snapshot.channel === "none") return null;
+      } catch {
+        /* snapshot is best-effort; answer() reports the real channel */
+      }
+      const questions = Array.isArray(pending.questions) ? pending.questions : [];
+      const question = questions.find((item) => isRecord(item) && typeof item.id === "string" && item.id !== "");
+      if (question === undefined) return null;
+      const intent = isRecord(question.intent) ? question.intent : null;
+      const callId = intent !== null && intent.kind === "plan-review" && typeof intent.callId === "string" && intent.callId !== "" ? intent.callId : undefined;
+      const identity = parsePlanWorkbenchKey(key);
+      if (callId !== undefined && identity !== undefined && identity.kind === "call") {
+        return callId === identity.id ? { interaction: pending, reviewId: question.id } : null;
+      }
+      /* no call id on either side (or a snapshot identity): fall back to the plan text */
+      const detail = typeof question.detail === "string" ? question.detail : "";
+      if (detail === "" || text === "") return null;
+      const same = detail === text || (text.length >= 200 && detail.startsWith(text.slice(0, Math.min(text.length, 2000))));
+      return same ? { interaction: pending, reviewId: question.id } : null;
+    }
+
+    /** Where the feedback can go: the live review, the composer draft, or the clipboard. */
+    function planDelivery(options) {
+      const record = isRecord(options) ? options : {};
+      if (record.live !== null && record.live !== undefined) return "review";
+      if (record.hasInputActions === true) return "draft";
+      return "copy";
+    }
+
+    function planErrorMessage(cause) {
+      if (cause instanceof Error && cause.message !== "") return cause.message;
+      return typeof cause === "string" && cause !== "" ? cause : translate("planWorkbench.failed");
+    }
+
+    function useSessionPendingInteraction(sessionId) {
+      const source = readSessionStatusSource();
+      const subscribe = React.useCallback(
+        (onChange) => (source !== undefined && typeof source.subscribe === "function" ? source.subscribe(onChange) : () => {}),
+        [source]
+      );
+      const read = React.useCallback(() => {
+        if (source === undefined || typeof source.getSnapshot !== "function" || typeof sessionId !== "string") return undefined;
+        try {
+          const snapshot = source.getSnapshot();
+          const status = snapshot !== null && snapshot !== undefined && typeof snapshot.get === "function" ? snapshot.get(sessionId) : undefined;
+          return status !== null && status !== undefined ? status.pendingInteraction : undefined;
+        } catch {
+          return undefined;
+        }
+      }, [source, sessionId]);
+      return React.useSyncExternalStore(subscribe, read);
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* Open entry                                                       */
+    /* ---------------------------------------------------------------- */
+
+    /** Capture the plan snapshot and open its workbench tab; false when no sidebar can hold it. */
+    function openPlanWorkbench(payload) {
+      const record = isRecord(payload) ? payload : {};
+      const sessionId = typeof record.sessionId === "string" && record.sessionId !== "" ? record.sessionId : undefined;
+      if (sessionId === undefined) return false;
+      const identity = planWorkbenchIdentity(record.callId, record.requestKey, record.previewKey);
+      if (identity === undefined) return false;
+      const markdown = typeof record.markdown === "string" ? record.markdown : "";
+      const title = typeof record.title === "string" && record.title !== "" ? record.title : planTitleOf(markdown);
+      const stored = rememberContextPreview(sessionId, `${PLAN_WB_REF_PREFIX}${identity}`, title, markdown, "plan");
+      const key = typeof stored === "string" && stored !== "" ? stored : planWorkbenchKey(sessionId, identity);
+      const sidebar = contextSidebar();
+      if (sidebar === null) return false;
+      try {
+        sidebar.openResource(planWorkbenchAddress(key));
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    /** Leave the workbench once its review feedback has landed: replace this tab with
+        the overview page so the approval tab closes and the column returns to 概览.
+        Falls back to closing alone, and reports whether anything happened so the
+        caller can keep the inline notice when no tab surface can act. */
+    function finishPlanReviewTab(tab) {
+      const actions = isRecord(tab) && isRecord(tab.actions) ? tab.actions : null;
+      if (actions === null) return false;
+      try {
+        if (typeof actions.openTab === "function") {
+          actions.openTab(TAB_KIND, { replaceTab: true });
+          return true;
+        }
+      } catch {
+        /* the overview page type is not registered in this placement: close instead */
+      }
+      try {
+        if (typeof actions.close === "function") {
+          actions.close();
+          return true;
+        }
+      } catch {
+        /* nothing left to act on */
+      }
+      return false;
+    }
+
+    /** The review card's footer button row, found without knowing the host's hashed
+        CSS-module prefix. The card root carries `data-plan-review-key`. */
+    function planReviewFooterActions(card) {
+      if (card === null || typeof card !== "object") return null;
+      if (typeof card.querySelector === "function") {
+        const direct = card.querySelector('[class*="_footer"] [class*="_actions"]');
+        if (direct !== null && direct !== undefined) return direct;
+      }
+      const groups = typeof card.querySelectorAll === "function" ? card.querySelectorAll('[class*="_actions"]') : null;
+      if (groups !== null && typeof groups[Symbol.iterator] === "function") {
+        for (const group of groups) {
+          const buttons = typeof group.querySelectorAll === "function" ? group.querySelectorAll("button") : null;
+          if (buttons !== null && buttons !== undefined && typeof buttons.length === "number" && buttons.length >= 2) return group;
+        }
+      }
+      return null;
+    }
+
+    /** Review-card action: a pill in the shipped plan-review footer row. The slot seat
+        itself is the warning strip's preview-actions area, so the pill is portalled into
+        the card footer to sit beside 「要求修改」/「同意执行」 with the host's own button
+        styling (falls back to the strip pill when that footer cannot be located). */
+    function PlanReviewAnnotateAction(props) {
+      const t = typeof props.t === "function" ? props.t : translate;
+      const review = isRecord(props.review) ? props.review : null;
+      const requestKey = typeof props.requestKey === "string" ? props.requestKey : "";
+      const [failed, setFailed] = React.useState(false);
+      /* false = render in the slot seat (first paint and no-DOM fallback) */
+      const [mount, setMount] = React.useState(false);
+      const useIsoLayoutEffect = typeof React.useLayoutEffect === "function" ? React.useLayoutEffect : React.useEffect;
+      const open = () => {
+        const ok = openPlanWorkbench({
+          sessionId: props.sessionId,
+          callId: review !== null && typeof review.callId === "string" ? review.callId : undefined,
+          requestKey: props.requestKey,
+          title: review !== null ? planTitleOf(review.plan) : "",
+          markdown: review !== null && typeof review.plan === "string" ? review.plan : "",
+        });
+        setFailed(ok !== true);
+      };
+      useIsoLayoutEffect(() => {
+        if (createPortal === null || requestKey === "" || typeof document === "undefined" || !document.body || typeof document.querySelectorAll !== "function") {
+          return undefined;
+        }
+        let card = null;
+        for (const node of document.querySelectorAll("[data-plan-review-key]")) {
+          if (node.getAttribute("data-plan-review-key") === requestKey) {
+            card = node;
+            break;
+          }
+        }
+        if (card === null) return undefined;
+        const actions = planReviewFooterActions(card);
+        if (actions === null || typeof actions.insertBefore !== "function") return undefined;
+        const host = document.createElement("div");
+        host.className = "dsov-planActionHost";
+        try {
+          actions.insertBefore(host, actions.lastElementChild);
+        } catch {
+          return undefined;
+        }
+        setMount(host);
+        return () => {
+          if (typeof host.remove === "function") host.remove();
+          else if (host.parentNode !== null) host.parentNode.removeChild(host);
+        };
+      }, [requestKey]);
+      const pill =
+        primitives !== null && primitives.Button !== undefined && primitives.Button !== null
+          ? h(
+              primitives.Button,
+              { type: "button", variant: "outline", icon: h(IconPlan, { size: 14 }), title: t("planWorkbench.actionHint"), onClick: open },
+              t("planWorkbench.action")
+            )
+          : h(
+              "button",
+              { type: "button", className: "dsov-planAction", onClick: open, title: t("planWorkbench.actionHint") },
+              h(IconPlan, { size: 14 }),
+              h("span", null, t("planWorkbench.action"))
+            );
+      const wrap = h(
+        "span",
+        { className: "dsov-planActionWrap", "data-in-footer": mount === false ? undefined : "true" },
+        pill,
+        failed ? h("span", { className: "dsov-planActionError" }, t("planWorkbench.openFailed")) : null
+      );
+      return mount === false ? wrap : createPortal(wrap, mount);
+    }
+
+    /** Row menu beside one overview plan artifact. */
+    function PlanRowMenu({ menu, t, onClose }) {
+      const clamp = (value, max) => Math.max(8, Math.min(value, max));
+      const style = {
+        left: `${clamp(menu.x, (typeof window !== "undefined" ? window.innerWidth : 1200) - 220)}px`,
+        top: `${clamp(menu.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 170)}px`,
+      };
+      const artifact = isRecord(menu.artifact) ? menu.artifact : {};
+      const run = (action) => {
+        try {
+          action();
+        } finally {
+          onClose();
+        }
+      };
+      const entry = typeof artifact.previewKey === "string" && artifact.previewKey !== "" ? readContextPreview(artifact.previewKey) : null;
+      return h(
+        "div",
+        { className: "dsov-fileMenu", style, onMouseDown: (event) => event.stopPropagation(), onContextMenu: (event) => event.preventDefault() },
+        h(
+          "button",
+          {
+            type: "button",
+            className: "dsov-fileMenuItem",
+            onClick: () =>
+              run(() =>
+                openPlanWorkbench({
+                  sessionId: menu.sessionId,
+                  callId: artifact.planCallId,
+                  previewKey: artifact.previewKey,
+                  title: artifact.planTitle,
+                  markdown: entry !== null ? entry.text : "",
+                })
+              ),
+          },
+          t("planWorkbench.menuAnnotate")
+        ),
+        h("div", { className: "dsov-fileMenuSep" }),
+        h(
+          "button",
+          {
+            type: "button",
+            className: "dsov-fileMenuItem",
+            disabled: entry === null,
+            onClick: () =>
+              run(() => {
+                if (entry === null) return;
+                const result = insertIntoComposer(entry.text);
+                void result;
+              }),
+          },
+          t("planWorkbench.menuCopy")
+        ),
+        h(
+          "button",
+          { type: "button", className: "dsov-fileMenuItem", onClick: () => run(() => openNativePlan(menu.sessionId, artifact.planCallId)) },
+          t("planWorkbench.openOriginal")
+        )
+      );
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* Workbench tab body                                               */
+    /* ---------------------------------------------------------------- */
+
+    function PlanWorkbenchBody(props) {
+      const t = typeof props.t === "function" ? props.t : translate;
+      const info = typeof props.useTabInfo === "function" ? props.useTabInfo() : null;
+      const address = info !== null && isRecord(info.tab) ? info.tab.contentId : undefined;
+      const key = parsePlanWorkbenchAddress(address);
+      const identity = key === undefined ? undefined : parsePlanWorkbenchKey(key);
+      const snapshot = key === undefined ? null : readContextPreview(key);
+      const callId = identity !== undefined && identity.kind === "call" ? identity.id : undefined;
+      const resourceAddress = identity !== undefined && callId !== undefined ? planResourceAddress(identity.sessionId, callId) : PLAN_NO_RESOURCE;
+      const resource = typeof props.useResource === "function" ? props.useResource(resourceAddress) : null;
+      const resourceValue = isRecord(resource) && resource.status === "live" && isRecord(resource.value) ? resource.value : null;
+      const text = resourceValue !== null && typeof resourceValue.markdown === "string" ? resourceValue.markdown : snapshot !== null ? snapshot.text : "";
+      const title =
+        resourceValue !== null && typeof resourceValue.title === "string" && resourceValue.title !== ""
+          ? resourceValue.title
+          : snapshot !== null
+            ? snapshot.title
+            : t("planWorkbench.tabTitle");
+      const foreign =
+        identity !== undefined && typeof props.sessionId === "string" && props.sessionId !== "" && identity.sessionId !== props.sessionId;
+      const pending = useSessionPendingInteraction(identity === undefined ? undefined : identity.sessionId);
+      const live = findLivePlanReview(pending, key === undefined ? "" : key, text);
+      const hasInputActions = isRecord(props.inputActions) && typeof props.inputActions.setDraft === "function";
+      const delivery = planDelivery({ live, hasInputActions });
+
+      const [mode, setMode] = React.useState("annotate");
+      const [book, setBook] = React.useState(() => (key === undefined ? emptyPlanBook() : readPlanBook(key)));
+      const [draftEdit, setDraftEdit] = React.useState(null);
+      const [editingAt, setEditingAt] = React.useState(null);
+      const [commentDraft, setCommentDraft] = React.useState("");
+      const [busy, setBusy] = React.useState(false);
+      const [error, setError] = React.useState(null);
+      const [notice, setNotice] = React.useState(null);
+
+      React.useEffect(() => {
+        setBook(key === undefined ? emptyPlanBook() : readPlanBook(key));
+        setDraftEdit(null);
+        setEditingAt(null);
+        setCommentDraft("");
+        setBusy(false);
+        setError(null);
+        setNotice(null);
+      }, [key]);
+
+      const sections = React.useMemo(() => planSections(text), [text]);
+      const editedValue = draftEdit !== null ? draftEdit : book.edited !== "" ? book.edited : text;
+      const editedText = draftEdit !== null ? draftEdit : book.edited;
+      const annotationCount = book.annotations.length;
+      const saveBook = (next) => {
+        const clean = sanitizePlanBook(next);
+        setBook(clean);
+        if (key !== undefined) writePlanBook(key, clean);
+      };
+
+      const openOriginal = () => {
+        if (identity === undefined || identity.kind !== "call") return false;
+        return openNativePlan(identity.sessionId, identity.id);
+      };
+
+      const markdownOf = (value) => (ChatMarkdown !== null ? h(ChatMarkdown, { text: value, labels: chatMarkdownLabels(t) }) : h(MarkdownBody, { text: value }));
+
+      const addAnnotation = (sectionIndex, heading, quote) => {
+        const comment = commentDraft.trim();
+        if (comment === "") return;
+        const item = {
+          id: `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+          sectionIndex,
+          heading,
+          quote,
+          comment,
+          createdAt: Date.now(),
+        };
+        saveBook({ annotations: [...book.annotations, item], edited: book.edited });
+        setCommentDraft("");
+        setEditingAt(null);
+        setError(null);
+        setNotice(null);
+      };
+
+      const removeAnnotation = (id) => {
+        saveBook({ annotations: book.annotations.filter((item) => item.id !== id), edited: book.edited });
+      };
+
+      const submit = () => {
+        const feedback = buildPlanFeedback({ title, annotations: book.annotations, edited: editedText }, t);
+        if (feedback === null) {
+          setError(t("planWorkbench.empty"));
+          return;
+        }
+        setError(null);
+        setNotice(null);
+        if (live !== null) {
+          setBusy(true);
+          let answer;
+          try {
+            answer = live.interaction.answer({ answers: [{ id: live.reviewId, selected: [], custom: feedback }] });
+          } catch (cause) {
+            setBusy(false);
+            setError(planErrorMessage(cause));
+            return;
+          }
+          Promise.resolve(answer).then(
+            () => {
+              setBusy(false);
+              /* the feedback reached the live review: retire the approval tab and land
+                 back on the overview instead of leaving the stale plan on screen */
+              const tab = info !== null && isRecord(info.tab) ? info.tab : null;
+              if (!finishPlanReviewTab(tab)) setNotice(t("planWorkbench.submitted"));
+            },
+            (cause) => {
+              setBusy(false);
+              setError(planErrorMessage(cause));
+            }
+          );
+          return;
+        }
+        if (hasInputActions) {
+          try {
+            props.inputActions.setDraft(feedback);
+            if (typeof props.inputActions.persistDraft === "function") props.inputActions.persistDraft();
+            setNotice(t("planWorkbench.drafted"));
+          } catch (cause) {
+            setError(planErrorMessage(cause));
+          }
+          return;
+        }
+        const result = insertIntoComposer(feedback);
+        if (result === "failed") setError(t("planWorkbench.copyFailed"));
+        else setNotice(result === "copied" ? t("planWorkbench.copied") : t("planWorkbench.drafted"));
+      };
+
+      const copyFeedback = () => {
+        const feedback = buildPlanFeedback({ title, annotations: book.annotations, edited: editedText }, t);
+        if (feedback === null) {
+          setError(t("planWorkbench.empty"));
+          return;
+        }
+        setError(null);
+        try {
+          if (typeof navigator !== "undefined" && navigator.clipboard !== undefined && typeof navigator.clipboard.writeText === "function") {
+            navigator.clipboard.writeText(feedback).then(
+              () => setNotice(t("planWorkbench.copied")),
+              () => setError(t("planWorkbench.copyFailed"))
+            );
+            return;
+          }
+        } catch {
+          /* fall through to the error notice */
+        }
+        setError(t("planWorkbench.copyFailed"));
+      };
+
+      if (key === undefined || identity === undefined || text === "") {
+        return h(
+          "div",
+          { className: "dsov-planWb" },
+          h("div", { className: "dsov-planWbHead" }, h("span", { className: "dsov-planWbTitle" }, title)),
+          h(
+            "div",
+            { className: "dsov-planWbUnavailable" },
+            h("span", null, t("planWorkbench.unavailable")),
+            identity !== undefined && identity.kind === "call"
+              ? h("button", { type: "button", className: "dsov-headAction", onClick: openOriginal }, h(IconPlan, { size: 13 }), t("planWorkbench.openOriginal"))
+              : null
+          )
+        );
+      }
+
+      const label = (section) => (section.heading !== "" ? section.heading : t("planWorkbench.preface")) || t("planWorkbench.whole");
+
+      const noteCards = (sectionIndex) =>
+        book.annotations
+          .filter((item) => item.sectionIndex === sectionIndex)
+          .map((item) =>
+            h(
+              "div",
+              { className: "dsov-planWbNote", key: item.id },
+              h(
+                "div",
+                { className: "dsov-planWbNoteHead" },
+                h("span", { className: "dsov-planWbNoteQuote" }, item.quote !== "" ? item.quote : item.heading !== "" ? item.heading : t("planWorkbench.whole")),
+                h(
+                  "button",
+                  { type: "button", className: "dsov-planWbNoteDel", title: t("planWorkbench.remove"), "aria-label": t("planWorkbench.remove"), onClick: () => removeAnnotation(item.id) },
+                  "×"
+                )
+              ),
+              h("div", { className: "dsov-planWbNoteText" }, item.comment)
+            )
+          );
+
+      const editorFor = (sectionIndex, heading, quote) =>
+        h(
+          "div",
+          { className: "dsov-planWbEditor" },
+          h("textarea", {
+            className: "dsov-planWbTextarea",
+            rows: 3,
+            value: commentDraft,
+            placeholder: t("planWorkbench.commentPlaceholder"),
+            "aria-label": t("planWorkbench.commentAria", { heading: heading !== "" ? heading : t("planWorkbench.whole") }),
+            onChange: (event) => setCommentDraft(event.target.value),
+            onKeyDown: (event) => {
+              if (event.key === "Escape") {
+                setEditingAt(null);
+                setCommentDraft("");
+              }
+            },
+          }),
+          h(
+            "div",
+            { className: "dsov-planWbEditorFoot" },
+            h("button", { type: "button", className: "dsov-planWbPrimary", disabled: commentDraft.trim() === "", onClick: () => addAnnotation(sectionIndex, heading, quote) }, t("planWorkbench.save")),
+            h(
+              "button",
+              {
+                type: "button",
+                className: "dsov-planWbGhost",
+                onClick: () => {
+                  setEditingAt(null);
+                  setCommentDraft("");
+                },
+              },
+              t("planWorkbench.cancel")
+            )
+          )
+        );
+
+      const addButton = (sectionIndex, heading, quote) =>
+        h(
+          "button",
+          {
+            type: "button",
+            className: "dsov-planWbAdd",
+            title: t("planWorkbench.addHere"),
+            "aria-label": t("planWorkbench.addAria", { heading: heading !== "" ? heading : t("planWorkbench.whole") }),
+            onClick: () => {
+              setEditingAt(editingAt === sectionIndex ? null : sectionIndex);
+              setCommentDraft("");
+            },
+          },
+          "+"
+        );
+
+      const wholeLabel = t("planWorkbench.whole");
+      const sectionsNode = h(
+        "div",
+        { className: "dsov-planWbSections" },
+        h(
+          "section",
+          { className: "dsov-planWbSection", "data-whole": "true" },
+          h("div", { className: "dsov-planWbSectionBody" }, h("div", { className: "dsov-planWbWhole" }, wholeLabel)),
+          addButton(PLAN_WHOLE, wholeLabel, ""),
+          noteCards(PLAN_WHOLE),
+          editingAt === PLAN_WHOLE ? editorFor(PLAN_WHOLE, wholeLabel, "") : null
+        ),
+        sections.map((section) =>
+          h(
+            "section",
+            { className: "dsov-planWbSection", key: `s${section.index}`, "data-level": String(section.level) },
+            h("div", { className: "dsov-planWbSectionBody" }, markdownOf(section.text)),
+            addButton(section.index, section.heading, section.quote),
+            noteCards(section.index),
+            editingAt === section.index ? editorFor(section.index, section.heading, section.quote) : null
+          )
+        )
+      );
+      const annotateBody =
+        ChatMarkdown !== null && ChatMarkdownProvider !== null
+          ? h(ChatMarkdownProvider, {
+              openFile: (path) => openDocLinkedFile(identity.sessionId, path),
+              openExternalLink: openDocExternalLink,
+              children: sectionsNode,
+            })
+          : sectionsNode;
+
+      const editorBody = h(
+        "div",
+        { className: "dsov-planWbEdit" },
+        h("textarea", {
+          className: "dsov-planWbEditText",
+          value: editedValue,
+          readOnly: foreign,
+          "aria-label": t("planWorkbench.editAria"),
+          onChange: (event) => setDraftEdit(event.target.value),
+        }),
+        h(
+          "div",
+          { className: "dsov-planWbEditorFoot" },
+          h("span", { className: "dsov-planWbHint" }, t("planWorkbench.editHint")),
+          h(
+            "button",
+            {
+              type: "button",
+              className: "dsov-planWbGhost",
+              disabled: book.edited === "",
+              onClick: () => {
+                setDraftEdit("");
+                saveBook({ annotations: book.annotations, edited: "" });
+              },
+            },
+            t("planWorkbench.revert")
+          ),
+          h(
+            "button",
+            {
+              type: "button",
+              className: "dsov-planWbPrimary",
+              onClick: () => {
+                saveBook({ annotations: book.annotations, edited: editedValue });
+                setDraftEdit(null);
+                setNotice(t("planWorkbench.editSaved"));
+              },
+            },
+            t("planWorkbench.editSave")
+          )
+        )
+      );
+
+      const submitLabel =
+        delivery === "review" ? t("planWorkbench.submitReview") : delivery === "draft" ? t("planWorkbench.submitDraft") : t("planWorkbench.submitComposer");
+      const canSubmit = foreign !== true && busy !== true && (annotationCount > 0 || editedText !== "");
+
+      return h(
+        "div",
+        { className: "dsov-planWb", "data-foreign": foreign === true ? "true" : "false" },
+        h(
+          "div",
+          { className: "dsov-planWbHead" },
+          h("span", { className: "dsov-planWbTitle", title }, title),
+          h("span", { className: "dsov-planWbState", "data-tone": live !== null ? "live" : "quiet" }, live !== null ? t("planWorkbench.reviewPending") : t("planWorkbench.reviewClosed")),
+          h(
+            "div",
+            { className: "dsov-planWbModes", role: "group", "aria-label": t("planWorkbench.modes") },
+            h(
+              "button",
+              { type: "button", className: "dsov-planWbMode", "data-active": mode === "annotate" ? "true" : "false", onClick: () => setMode("annotate") },
+              t("planWorkbench.modeAnnotate")
+            ),
+            h("button", { type: "button", className: "dsov-planWbMode", "data-active": mode === "edit" ? "true" : "false", onClick: () => setMode("edit") }, t("planWorkbench.modeEdit"))
+          ),
+          identity.kind === "call"
+            ? h("button", { type: "button", className: "dsov-headAction", onClick: () => void openOriginal() }, h(IconPlan, { size: 13 }), t("planWorkbench.openOriginal"))
+            : null
+        ),
+        h("div", { className: "dsov-planWbBody" }, mode === "edit" ? editorBody : annotateBody),
+        h(
+          "div",
+          { className: "dsov-planWbFoot" },
+          h("span", { className: "dsov-planWbCount" }, t("planWorkbench.count", { n: annotationCount })),
+          error !== null ? h("span", { className: "dsov-planWbErr" }, error) : notice !== null ? h("span", { className: "dsov-planWbNotice" }, notice) : null,
+          h("button", { type: "button", className: "dsov-planWbPrimary", disabled: canSubmit !== true, onClick: submit }, busy === true ? t("planWorkbench.submitting") : submitLabel),
+          h("button", { type: "button", className: "dsov-planWbGhost", onClick: copyFeedback }, t("planWorkbench.copyFeedback"))
+        )
+      );
+    }
+
+    /** Tab chip for one plan workbench: the plan glyph plus the plan title. */
+    function PlanTabTitle(props) {
+      const t = typeof props.t === "function" ? props.t : translate;
+      const info = typeof props.useTabInfo === "function" ? props.useTabInfo() : null;
+      const address = info !== null && isRecord(info.tab) ? info.tab.contentId : undefined;
+      const key = parsePlanWorkbenchAddress(address);
+      const entry = key === undefined ? null : readContextPreview(key);
+      const title = entry !== null ? entry.title : t("planWorkbench.tabTitle");
+      return h(
+        "span",
+        { className: "dsov-vikingHead" },
+        h("span", { className: "dsov-vikingIcon" }, h(IconPlan, { size: 14 })),
+        h("span", { className: "dsov-vikingHeadText" }, h("span", { className: "dsov-vikingName" }, title))
+      );
+    }
 
     /* ------------------------------------------------------------------ */
     /* Plugin body                                                         */
@@ -8593,6 +10032,8 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
         document.head.appendChild(style);
         return () => {
           style.remove();
+          if (overlayHost !== null && typeof overlayHost.remove === "function") overlayHost.remove();
+          overlayHost = null;
         };
       }, "conversation-overview: styles");
 
@@ -8806,6 +10247,72 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
         "conversation-overview: context tab title"
       );
 
+      ctx.effect(
+        () =>
+          ctx.sidebarRightTabs.register({
+            id: PLAN_TAB_ID,
+            kind: PLAN_TAB_KIND,
+            patterns: [`${PLAN_ADDRESS_PREFIX}**`],
+            priority: "builtin",
+            multiple: true,
+            canOpen: (address) => parsePlanWorkbenchAddress(address) !== undefined,
+            title: (address) => {
+              const key = parsePlanWorkbenchAddress(address);
+              if (key === undefined) return String(address);
+              const entry = readContextPreview(key);
+              return entry !== null ? entry.title : translate("planWorkbench.tabTitle");
+            },
+          }),
+        "conversation-overview: plan workbench tab type"
+      );
+
+      ctx.effect(
+        () =>
+          ctx.slots.inject(
+            "sidebar.right.pane.tab",
+            () =>
+              ctx.slots.register(
+                {
+                  name: "sidebar.right.pane.tab",
+                  key: PLAN_TAB_ID,
+                  locale: NS,
+                },
+                PlanWorkbenchBody
+              )
+          ),
+        "conversation-overview: plan workbench tab body"
+      );
+
+      ctx.effect(
+        () =>
+          ctx.slots.inject(
+            "sidebar.right.pane.tab.title",
+            () => ctx.slots.register({ name: "sidebar.right.pane.tab.title", key: PLAN_TAB_ID }, PlanTabTitle)
+          ),
+        "conversation-overview: plan workbench tab title"
+      );
+
+      /* The shipped plan-review footer keeps 「要求修改」(dismiss) and 「同意执行」;
+         this pill opens the annotation workbench, whose submit path feeds the same
+         PendingQuestion so the model revises inside the pending turn. */
+      ctx.effect(
+        () =>
+          ctx.slots.inject(
+            "conversation.plan-review.actions",
+            () =>
+              ctx.slots.register(
+                {
+                  name: "conversation.plan-review.actions",
+                  id: PLAN_REVIEW_ACTION_ID,
+                  order: 10,
+                  locale: NS,
+                },
+                PlanReviewAnnotateAction
+              )
+          ),
+        "conversation-overview: plan review annotation action"
+      );
+
       ctx.effect(() => {
         if (typeof document === "undefined" || !document.documentElement) return undefined;
         const applyAttr = () => {
@@ -8937,6 +10444,7 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
       zh,
       en,
       createFolder,
+      createSummaryStore,
       foldEvent,
       foldEntry,
       buildState,
@@ -8945,6 +10453,14 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
       planTokens,
       planActiveAt,
       recentStepWindow,
+      stepIdentityOf,
+      stepWindowDelta,
+      completedStepKeys,
+      TAB_KIND,
+      liveStepOf,
+      liveScopeMatches,
+      summarizeTodos,
+      finishPlanReviewTab,
       vikingLabel,
       vikingRefKind,
       vikingIsDir,
@@ -9007,6 +10523,24 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
       preferSessionOverview,
       planTitleOf,
       openNativePlan,
+      planResourceAddress,
+      planWorkbenchIdentity,
+      planWorkbenchKey,
+      parsePlanWorkbenchKey,
+      planWorkbenchAddress,
+      parsePlanWorkbenchAddress,
+      planSections,
+      planSectionQuote,
+      sanitizePlanBook,
+      readPlanBook,
+      writePlanBook,
+      buildPlanFeedback,
+      findLivePlanReview,
+      planDelivery,
+      openPlanWorkbench,
+      PlanWorkbenchBody,
+      PlanReviewAnnotateAction,
+      planReviewFooterActions,
       documentAddress,
       openNativeDocument,
       openArtifact,
