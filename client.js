@@ -77,7 +77,7 @@ window.__ModuleLoader__.load({
     const RELEASE_TAGS_API_URL = "https://api.github.com/repos/LingF/dsh-conversation-overview/tags?per_page=100";
     const TAGS_URL = "https://github.com/LingF/dsh-conversation-overview/tags";
     /* keep in sync with package.json */
-    const PLUGIN_VERSION = "1.7.0";
+    const PLUGIN_VERSION = "1.8.0";
     const LATEST_CACHE_KEY = "dsh.conversationOverview.latestRelease";
     const LATEST_CACHE_TTL = 6 * 60 * 60 * 1000;
     const latestStore = { tag: null, via: "release", loaded: false, inflight: null };
@@ -276,14 +276,14 @@ window.__ModuleLoader__.load({
       "progress.meterTitle": "{completed}/{total} 已完成 · {running} 进行中 · {pending} 待处理",
       "progress.leftover": "{running} 进行中 · {pending} 待处理",
       "progress.staleHint": "待办状态取自执行方的最后一次更新；本轮结束时仍有未完成项",
-      "artifacts.empty": "本次对话产出的文件将在此展示",
+      "artifacts.empty": "本次对话产出与修改的文件将在此展示",
       "artifacts.viewAll": "查看所有改动",
       "settings.summary": "控制概览的板块与显示位置",
       "settings.nav": "概览",
       "settings.pageTitle": "对话概览（dsh-conversation-overview）",
       "settings.sections": "板块显示",
       "settings.showProgress": "进展（任务与待办）",
-      "settings.showArtifacts": "产物（本次对话产出）",
+      "settings.showArtifacts": "产物（本次对话产出与修改）",
       "settings.showReferences": "引用（上下文、记忆等）",
       "settings.showStats": "统计（用时、执行次数等）",
       "settings.timeMode": "时间显示",
@@ -474,6 +474,8 @@ window.__ModuleLoader__.load({
       "artifact.presented": "交付",
       "artifact.plan": "计划",
       "artifact.memory": "记忆",
+      "artifact.change": "变更",
+      "artifact.changeHint": "Git 快照记录的改动，包含尚未纳入 Git 的新文件；点击查看对比",
       "artifact.menu.reveal": "在上层文件夹中显示",
       "artifact.menu.openWith": "打开方式",
       "artifact.menu.loading": "正在读取可用应用…",
@@ -620,14 +622,14 @@ window.__ModuleLoader__.load({
       "progress.meterTitle": "{completed} of {total} completed · {running} in progress · {pending} pending",
       "progress.leftover": "{running} in progress · {pending} pending",
       "progress.staleHint": "Todo state follows the agent's last update; items were still open when the turn ended",
-      "artifacts.empty": "Files produced in this conversation appear here",
+      "artifacts.empty": "Files produced or changed in this conversation appear here",
       "artifacts.viewAll": "Review all changes",
       "settings.summary": "Control the overview sections and where they appear",
       "settings.nav": "Overview",
       "settings.pageTitle": "Conversation Overview (dsh-conversation-overview)",
       "settings.sections": "Sections",
       "settings.showProgress": "Progress (tasks and todos)",
-      "settings.showArtifacts": "Artifacts (files produced)",
+      "settings.showArtifacts": "Artifacts (files produced or changed)",
       "settings.showReferences": "References (context, memories)",
       "settings.showStats": "Stats (duration, tool calls, …)",
       "settings.timeMode": "Time display",
@@ -818,6 +820,8 @@ window.__ModuleLoader__.load({
       "artifact.presented": "Delivered",
       "artifact.plan": "Plan",
       "artifact.memory": "Memory",
+      "artifact.change": "Changed",
+      "artifact.changeHint": "Recorded by the Git snapshot, including files Git does not track yet; click to review the comparison",
       "artifact.menu.reveal": "Show in Enclosing Folder",
       "artifact.menu.openWith": "Open With",
       "artifact.menu.loading": "Loading applications…",
@@ -3428,7 +3432,8 @@ window.__ModuleLoader__.load({
         case "workspace/changes": {
           if (!isRecord(data) || typeof data.turn !== "number" || !Number.isSafeInteger(data.turn) || data.turn < 1) return;
           if (typeof event.seq !== "number") return;
-          const change = { seq: event.seq, turn: data.turn };
+          /* the announcing event's time orders change-only artifact rows and gates them while scrubbing */
+          const change = { seq: event.seq, turn: data.turn, time: typeof event.time === "number" ? event.time : 0 };
           folder.changes.push(change);
           const changesBucket = folder.byTurn.get(data.turn);
           if (changesBucket !== undefined) changesBucket.changes.push(change);
@@ -4750,23 +4755,44 @@ function FileTypeIcon(props) {
     /* Icons (stroke glyphs on currentColor, host-style)                   */
     /* ------------------------------------------------------------------ */
 
-    function useArtifactStats(binding, changeTurns) {
-      const [stats, setStats] = React.useState(null);
+    /** No change summaries loaded (or served): artifacts render alone, as before. */
+    const EMPTY_TURN_CHANGES = { stats: null, files: [] };
+
+    /**
+     * Per-turn change summaries behind the Artifacts section: `stats` merges each
+     * file's line counts across the scope, while `files` keeps the files themselves.
+     * The Host records these per turn from Git snapshots — untracked and
+     * Git-ignored files included — so a modification no file tool produced (a bash
+     * script, a new untracked file) still becomes an artifact row. The Host serves
+     * them only while the Session lives: a replayed historical Session has neither.
+     * @param binding - the viewed Session binding.
+     * @param changeTurns - the scope's `workspace/changes` events ({ seq, turn, time }).
+     * @returns merged file stats and the changed-file records.
+     */
+    function useTurnChanges(binding, changeTurns) {
+      const [changes, setChanges] = React.useState(EMPTY_TURN_CHANGES);
       const sessionId = binding ? binding.sessionId : undefined;
       const turns = Array.isArray(changeTurns) ? changeTurns : [];
       const turnsKey = turns.map((turn) => turn.seq).join(",");
       React.useEffect(() => {
         if (sessionId === undefined || turnsKey === "") {
-          setStats(null);
+          setChanges(EMPTY_TURN_CHANGES);
           return undefined;
         }
         let cancelled = false;
-        const queued = turnsKey.split(",").map((seq, position) => ({ seq: Number(seq), turn: Number(turns[position] ? turns[position].turn : 0) }));
+        const queued = turnsKey.split(",").map((seq, position) => {
+          const entry = turns[position];
+          return {
+            seq: Number(seq),
+            turn: Number(entry !== null && entry !== undefined ? entry.turn : 0),
+            time: Number(entry !== null && entry !== undefined && typeof entry.time === "number" ? entry.time : 0),
+          };
+        });
         const load = async () => {
           const cwd = sessionCwd(sessionId);
           const merged = new Map();
           for (let position = 0; position < queued.length; position += 1) {
-            const { seq, turn } = queued[position];
+            const { seq, turn, time } = queued[position];
             const cacheable = position < queued.length - 1; // the newest turn may still be running
             const summary = await fetchTurnSummary(sessionId, seq, cacheable);
             if (cancelled) return;
@@ -4778,10 +4804,16 @@ function FileTypeIcon(props) {
                   existing.added += file.added;
                   existing.deleted += file.deleted;
                   existing.binary = existing.binary && file.binary === true;
+                  existing.oversized = existing.oversized || file.oversized === true;
+                  existing.path = file.path;
+                  existing.display = file.display;
                   existing.coords = { seq, turn };
                   existing.index = index;
+                  existing.time = time;
+                  existing.turn = turn;
                 } else {
                   merged.set(key, {
+                    path: file.path,
                     display: file.display,
                     added: file.added,
                     deleted: file.deleted,
@@ -4789,10 +4821,12 @@ function FileTypeIcon(props) {
                     oversized: file.oversized === true,
                     coords: { seq, turn },
                     index,
+                    time,
+                    turn,
                   });
                 }
               });
-              setStats(new Map(merged));
+              setChanges({ stats: new Map(merged), files: [...merged.values()] });
             }
           }
         };
@@ -4802,7 +4836,56 @@ function FileTypeIcon(props) {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [sessionId, turnsKey]);
-      return stats;
+      return changes;
+    }
+
+    /**
+     * The Artifacts rows: tool-produced artifacts in view order, then every file the
+     * Scope's Git snapshots recorded that no artifact already names. A file changed
+     * by a bash command, or a new file Git does not track yet, has no artifact of its
+     * own — the snapshot is the only record that it changed, and the harness' own
+     * turn-tail changed-files card lists it from the same summary.
+     * @param cwd - Session working directory the summaries' relative paths resolve against.
+     * @param artifacts - the Scope's artifact rows in view order.
+     * @param files - the Scope's changed-file records from `useTurnChanges`.
+     * @param asOfTime - timeline scrub point; files recorded later are not shown yet.
+     * @returns artifact rows followed by change-only rows, deduped by absolute path.
+     */
+    function artifactRows(cwd, artifacts, files, asOfTime) {
+      const rows = Array.isArray(artifacts) ? artifacts.slice() : [];
+      /* a file an artifact already names keeps the artifact row: counts merge into it */
+      const named = new Set();
+      const namedPaths = [];
+      for (const artifact of rows) {
+        if (!isRecord(artifact) || typeof artifact.path !== "string" || artifact.path === "") continue;
+        /* plans, conclusions and viking memories are not work-tree files */
+        if (artifact.plan === true || artifact.kind === "conclusion" || artifact.path.startsWith("viking://")) continue;
+        named.add(absPath(cwd, artifact.path));
+        namedPaths.push(artifact.path);
+      }
+      /* an unknown working directory leaves relative and absolute spellings to suffix match */
+      const namesFile = (path) => named.has(absPath(cwd, path)) || namedPaths.some((known) => known === path || known.endsWith(`/${path}`));
+      for (const file of Array.isArray(files) ? files : []) {
+        if (!isRecord(file) || typeof file.path !== "string" || file.path === "") continue;
+        if (typeof asOfTime === "number" && asOfTime > 0 && (file.time || 0) > asOfTime) continue;
+        if (namesFile(file.path)) continue;
+        named.add(absPath(cwd, file.path));
+        namedPaths.push(file.path);
+        rows.push({
+          path: file.path,
+          display: typeof file.display === "string" && file.display !== "" ? file.display : file.path,
+          kind: "change",
+          changed: true,
+          added: file.added,
+          deleted: file.deleted,
+          ...(file.binary ? { binary: true } : {}),
+          ...(file.oversized ? { oversized: true } : {}),
+          seq: isRecord(file.coords) ? file.coords.seq : 0,
+          time: typeof file.time === "number" ? file.time : 0,
+          turn: file.turn,
+        });
+      }
+      return rows;
     }
 
     function svg(size, className, children, viewBox) {
@@ -6287,14 +6370,20 @@ function FileTypeIcon(props) {
       );
     }
 
-    function ArtifactsSection({ summary, t, binding, stats, asOf, introSeq }) {
+    function ArtifactsSection({ summary, t, binding, stats, changeFiles, asOf, introSeq }) {
       const cfg = useConfig();
       const asOfTime = typeof asOf === "number" && asOf > 0 ? asOf : null;
-      const visibleArtifacts = asOfTime === null ? summary.artifacts : summary.artifacts.filter((artifact) => (artifact.firstTime || artifact.time || 0) <= asOfTime);
       const fmtTime = (ts) => formatTime(ts, cfg.timeMode, summary.turnStart);
       const timeTitle = (ts) => (cfg.timeMode === "elapsed" ? formatTime(ts) : undefined);
       const sessionId = binding ? binding.sessionId : undefined;
       const cwd = sessionCwd(sessionId);
+      /* files the Scope's Git snapshots recorded but no artifact names join the list */
+      const visibleArtifacts = artifactRows(
+        cwd,
+        asOfTime === null ? summary.artifacts : summary.artifacts.filter((artifact) => (artifact.firstTime || artifact.time || 0) <= asOfTime),
+        changeFiles,
+        asOfTime
+      );
       const canFileMenu = hostSessionRemote() !== null;
       const [fileMenu, setFileMenu] = React.useState(null);
       const [planMenu, setPlanMenu] = React.useState(null);
@@ -6335,11 +6424,20 @@ function FileTypeIcon(props) {
         const isMemory = typeof artifact.path === "string" && artifact.path.startsWith("viking://");
         const isConclusion = artifact.kind === "conclusion";
         const isPlan = artifact.plan === true;
+        const isChange = artifact.changed === true;
         const planName = isPlan ? (typeof artifact.planTitle === "string" && artifact.planTitle !== "" ? artifact.planTitle : t("artifact.plan")) : "";
         const buttonProps = {
           type: "button",
           className: "dsov-row",
-          title: isConclusion ? `${artifact.title} · ${t("artifact.conclusionHint")}` : isPlan ? planName : artifact.description ? `${artifact.path} — ${artifact.description}` : artifact.path,
+          title: isConclusion
+            ? `${artifact.title} · ${t("artifact.conclusionHint")}`
+            : isPlan
+              ? planName
+              : isChange
+                ? `${typeof artifact.display === "string" && artifact.display !== "" ? artifact.display : artifact.path} · ${t("artifact.changeHint")}`
+                : artifact.description
+                  ? `${artifact.path} — ${artifact.description}`
+                  : artifact.path,
           onClick: () => openArtifact(binding, artifact, stats),
           onContextMenu:
             canFileMenu && !isMemory && !isPlan && !isConclusion
@@ -6371,6 +6469,7 @@ function FileTypeIcon(props) {
               ? h("span", { className: "dsov-badge", "data-tone": "quiet" }, t("artifact.binary"))
               : null,
           isMemory ? h("span", { className: "dsov-badge", "data-tone": "quiet" }, t("artifact.memory")) : null,
+          isChange ? h("span", { className: "dsov-badge", "data-tone": "quiet" }, t("artifact.change")) : null,
           artifact.presented ? h("span", { className: "dsov-badge", "data-tone": "brand" }, t("artifact.presented")) : null,
           isPlan ? h("span", { className: "dsov-badge", "data-tone": "plan" }, t("artifact.plan")) : null,
           isConclusion ? h("span", { className: "dsov-badge", "data-tone": "brand" }, t("artifact.conclusion")) : null,
@@ -7484,7 +7583,9 @@ function FileTypeIcon(props) {
       const goalProjection = useGoal(binding);
       /* the live projection wins; a historical session falls back to the folded goal */
       const goal = React.useMemo(() => mergeGoalState(summary.goal, goalProjection), [summary.goal, goalProjection]);
-      const stats = useArtifactStats(binding, summary.changeTurns);
+      /* the Host's per-turn change summaries: merged line counts plus the changed files */
+      const turnChanges = useTurnChanges(binding, summary.changeTurns);
+      const stats = turnChanges.stats;
       const cfg = useConfig();
       const sessionId = binding ? binding.sessionId : undefined;
       /* 本轮结论 as a document: only a turn this overview actually watched finish
@@ -7538,16 +7639,29 @@ function FileTypeIcon(props) {
         : null;
       /* while scrubbing, the stats pills recompute from the steps that already happened */
       const viewStats = React.useMemo(() => {
-        if (asOf === null || typeof summary.turnStart !== "number") return summary.stats;
+        /* 「文件」 counts what the Scope's Git snapshots recorded, not only the files a
+           file tool touched: a bash edit or an untracked new file still counts. The
+           file-tool count stays a floor — a file Git ignores never reaches a snapshot. */
+        const base =
+          stats === null
+            ? summary.stats
+            : {
+                ...summary.stats,
+                files: Math.max(
+                  turnChanges.files.filter((file) => asOf === null || (isRecord(file) && (file.time || 0) <= asOf)).length,
+                  typeof summary.stats.files === "number" ? summary.stats.files : 0
+                ),
+              };
+        if (asOf === null || typeof summary.turnStart !== "number") return base;
         const list = (Array.isArray(summary.stepsAll) ? summary.stepsAll : []).filter((step) => isRecord(step) && (step.time || 0) <= asOf);
         return {
-          ...summary.stats,
+          ...base,
           durationMs: Math.max(0, asOf - summary.turnStart),
           toolCalls: list.length,
           commands: list.filter((step) => step.name === "bash").length,
           errors: list.filter((step) => step.error === true && (step.endTime || step.time || 0) <= asOf).length,
         };
-      }, [asOf, summary]);
+      }, [asOf, summary, stats, turnChanges]);
       /* A new turn gets a staged entrance for the three sections plus a short
          「第 N 轮对话开始」 cue. First paint of an already-running turn stays silent,
          and nothing replays on re-renders, scope switches or tab remounts. */
@@ -7794,7 +7908,7 @@ function FileTypeIcon(props) {
               introSeq,
             })
           : null,
-        cfg.showArtifacts ? h(ArtifactsSection, { summary, t, binding, stats, asOf, introSeq }) : null,
+        cfg.showArtifacts ? h(ArtifactsSection, { summary, t, binding, stats, changeFiles: turnChanges.files, asOf, introSeq }) : null,
         cfg.showReferences ? h(ReferencesSection, { summary, t, sessionId, asOf, introSeq }) : null
       );
     }
@@ -10478,6 +10592,7 @@ html[data-dsov-quicknav="off"] nav:has(button[data-index][aria-label]),html[data
       extractVikingUris,
       classifyFileType,
       isChangesSummary,
+      artifactRows,
       changesReviewAddress,
       absPath,
       normalizeConfig,

@@ -63,7 +63,8 @@ const ReactStub = {
   useRef: (init) => ({ current: init === undefined ? null : init }),
   useCallback: (fn) => fn,
   useId: () => "stub",
-  useSyncExternalStore: () => null,
+  /* components read the profile config through useConfig: hand them the real store value */
+  useSyncExternalStore: (_subscribe, getSnapshot) => (typeof getSnapshot === "function" ? getSnapshot() : null),
 };
 
 const jsxStub = {
@@ -2490,6 +2491,124 @@ for (const log of logs) console.log(`  ${log}`);
     assert.equal(typeof P.zh[key], "string", `zh has ${key}`);
     assert.equal(typeof P.en[key], "string", `en has ${key}`);
   }
+}
+
+/* ---- 20. change-only artifact rows (bash edits / Git-untracked files) ---- */
+{
+  const produced = [
+    { path: "/work/proj/src/a.ts", description: "written by the write tool", time: 10 },
+    { path: "viking://user/a/notes/plan.md", kind: "memory-file", time: 11 },
+    { path: "plan:plan-1", plan: true, planTitle: "计划", time: 12 },
+    { path: "conclusion:3", kind: "conclusion", title: "第 3 轮结论", time: 13 },
+  ];
+  const changed = [
+    /* already named by a tool artifact: the row keeps its counts, no duplicate */
+    { path: "src/a.ts", display: "src/a.ts", added: 3, deleted: 1, time: 20, turn: 3, coords: { seq: 42, turn: 3 } },
+    /* a bash-edited untracked file has no tool artifact of its own */
+    { path: "src/views/Meeting/components/TranscriptTurn.vue", display: "src/views/Meeting/components/TranscriptTurn.vue", added: 13, deleted: 7, time: 21, turn: 7, coords: { seq: 88, turn: 7 } },
+    { path: "/elsewhere/out.md", display: "~/elsewhere/out.md", added: 2, deleted: 0, time: 22, turn: 7, coords: { seq: 88, turn: 7 } },
+    { path: "src/assets/logo.png", display: "src/assets/logo.png", added: 0, deleted: 0, binary: true, time: 23, turn: 7, coords: { seq: 88, turn: 7 } },
+  ];
+  const rows = T.artifactRows("/work/proj", produced, changed, null);
+  const changeRows = rows.filter((row) => row.changed === true);
+  assert.equal(rows.length, 7, "tool artifacts first, then change-only files");
+  assert.deepEqual(changeRows.map((row) => row.path), ["src/views/Meeting/components/TranscriptTurn.vue", "/elsewhere/out.md", "src/assets/logo.png"], "only files no artifact names become change rows");
+  assert.equal(changeRows[0].added, 13, "a change row carries its line counts");
+  assert.equal(changeRows[0].deleted, 7);
+  assert.equal(changeRows[0].turn, 7, "a change row keeps its turn");
+  assert.equal(changeRows[2].binary, true, "a binary change row keeps its flag");
+  assert.equal(rows[0].path, "/work/proj/src/a.ts", "tool artifacts keep their order");
+  assert.ok(rows.some((row) => row.plan === true) && rows.some((row) => row.kind === "conclusion"), "plan and conclusion rows keep their identity");
+  const scrubbed = T.artifactRows("/work/proj", produced, changed, 21).filter((row) => row.changed === true);
+  assert.deepEqual(scrubbed.map((row) => row.path), ["src/views/Meeting/components/TranscriptTurn.vue"], "the scrub point hides change rows recorded later");
+  assert.equal(T.artifactRows("/work/proj", produced, null, null).length, 4, "no loaded summaries leaves artifacts alone");
+  assert.equal(T.artifactRows(undefined, [], changed, null).length, 4, "with no artifacts every change row lists");
+  assert.equal(
+    T.artifactRows(undefined, [{ path: "/work/proj/src/a.ts", time: 10 }], changed, null).filter((row) => row.changed === true).length,
+    3,
+    "an unknown cwd still dedupes by path suffix"
+  );
+}
+
+/* ---- 20b. a snapshot change folds with its time and needs no file tool ----- */
+{
+  const ev = (type, data, seq, time) => ({ type, data, seq, time });
+  const folder = T.createFolder();
+  folder.sessionId = "s-changes";
+  const W = "/w";
+  T.foldEvent(folder, ev("turn/start", { turn: 1 }, 1, 100), W);
+  T.foldEvent(folder, ev("workspace/changes", { turn: 1 }, 2, 149), W);
+  T.foldEvent(folder, ev("turn/start", { turn: 2 }, 3, 200), W);
+  T.foldEvent(folder, ev("tool/call", { callId: "b1", name: "bash", arguments: JSON.stringify({ command: "printf x >> src/new.vue" }) }, 4, 201), W);
+  T.foldEvent(folder, ev("workspace/changes", { turn: 2 }, 5, 260), W);
+  const win = { hasMore: false, entries: [] };
+  const all = T.buildState(folder, win, 0, "all");
+  assert.deepEqual(all.changeTurns, [{ seq: 2, turn: 1, time: 149 }, { seq: 5, turn: 2, time: 260 }], "change turns keep the announcing event's time");
+  const latest = T.buildState(folder, win, 0, "latest");
+  assert.deepEqual(latest.changeTurns, [{ seq: 5, turn: 2, time: 260 }], "the latest scope keeps only its own change");
+  assert.equal(latest.stats.files, 0, "a bash edit stays invisible to the tool-based file count");
+  const files = [{ path: "src/new.vue", display: "src/new.vue", added: 1, deleted: 0, time: 260, turn: 2, coords: { seq: 5, turn: 2 } }];
+  const rows = T.artifactRows("/w", latest.artifacts, files, null);
+  assert.equal(rows.length, 1, "the snapshot's file becomes the only artifact row");
+  assert.equal(rows[0].changed, true, "the row is marked as a snapshot change");
+  assert.equal(rows[0].path, "src/new.vue");
+  assert.equal(rows[0].turn, 2, "the row keeps the turn that recorded it");
+}
+
+/* ---- 21. ArtifactsSection lists the changed file beside the produced one -- */
+/* expand(), but a function component receives its children too: the artifacts list
+   renders Section rows through props.children, which the jsx stub keeps apart. */
+function expandWithChildren(node) {
+  if (Array.isArray(node)) return node.map(expandWithChildren);
+  if (node && typeof node === "object") {
+    if (typeof node.type === "function" && node.props) {
+      const children = node.children === undefined ? [] : expandWithChildren(node.children);
+      const props = children.length === 0 ? node.props : { ...node.props, children: children.length === 1 ? children[0] : children };
+      return expandWithChildren(node.type(props));
+    }
+    return { type: node.type, props: node.props, children: expandWithChildren(node.children) };
+  }
+  return node;
+}
+{
+  assert.equal(typeof T.zh["artifact.change"], "string", "zh has artifact.change");
+  assert.equal(typeof T.en["artifact.change"], "string", "en has artifact.change");
+  assert.equal(typeof T.zh["artifact.changeHint"], "string", "zh has artifact.changeHint");
+  assert.equal(typeof T.en["artifact.changeHint"], "string", "en has artifact.changeHint");
+  const host = materialize(undefined);
+  const summary = {
+    artifacts: [{ path: "src/a.ts", time: 10, seq: 10 }],
+    changeTurns: [{ seq: 88, turn: 7, time: 21 }],
+    turnStart: 1,
+    turnEnd: 30,
+  };
+  const stats = new Map([
+    ["src/a.ts", { added: 3, deleted: 1 }],
+    ["src/views/Meeting/components/TranscriptTurn.vue", { added: 13, deleted: 7, coords: { seq: 88, turn: 7 }, index: 0 }],
+  ]);
+  const changeFiles = [
+    { path: "src/views/Meeting/components/TranscriptTurn.vue", display: "src/views/Meeting/components/TranscriptTurn.vue", added: 13, deleted: 7, time: 21, turn: 7, coords: { seq: 88, turn: 7 } },
+  ];
+  resetHooks(true);
+  const tree = expandWithChildren(
+    host.instance._test.ArtifactsSection({ summary, t: (key) => key, binding: null, stats, changeFiles, asOf: null, introSeq: 0 })
+  );
+  const rowText = (n) => (Array.isArray(n.children) ? n.children[0] : n.children);
+  const names = collect(tree, (n) => n.props && n.props.className === "dsov-artifactName").map(rowText);
+  assert.deepEqual(names, ["a.ts", "TranscriptTurn.vue"], "the Git-recorded change lists beside the produced file");
+  const badges = collect(tree, (n) => n.props && n.props.className === "dsov-badge").map(rowText);
+  assert.ok(badges.includes("artifact.change"), "the change row says where it came from");
+  const counts = collect(tree, (n) => n.props && n.props.className === "dsov-counts");
+  assert.equal(counts.length, 2, "both file rows show their line counts");
+  const heading = collect(tree, (n) => n.props && n.props.className === "dsov-count")[0];
+  assert.equal(rowText(heading), "2", "the section badge counts artifacts plus change-only files");
+  /* the timeline scrub point gates change rows exactly like artifacts */
+  resetHooks(true);
+  const scrubbedTree = expandWithChildren(
+    host.instance._test.ArtifactsSection({ summary, t: (key) => key, binding: null, stats, changeFiles, asOf: 15, introSeq: 0 })
+  );
+  const scrubbedNames = collect(scrubbedTree, (n) => n.props && n.props.className === "dsov-artifactName").map(rowText);
+  assert.deepEqual(scrubbedNames, ["a.ts"], "a scrub point before the change event hides the change row");
 }
 
 console.log("\nALL TESTS PASSED");
